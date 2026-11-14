@@ -34,7 +34,7 @@ import caps
 import qbcompose
 import modes
 
-VERSION = "1.9.1"
+VERSION = "1.11.0"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PORT = 8090

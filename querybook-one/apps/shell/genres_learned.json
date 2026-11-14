@@ -5,6 +5,14 @@
    "why": "Not read: the AMS site refused automated access. The statement page on www.ametsoc.org (Best Practices for Publicly Sharing Weather Information Via Social Media) returned HTTP 403 (Cloudflare block) and a second AMS page on journals.ametsoc.org also returned HTTP 403. robots.txt allowed both; no byp"
   },
   {
+   "source": "class-central",
+   "why": "Not readable: www.classcentral.com answered 403 (Cloudflare challenge) to both attempts, the robots.txt and the report page, with two different fetchers. Block not bypassed. It is also only a directory of courses."
+  },
+  {
+   "source": "coursera-writing",
+   "why": "Public pages give no writing advice: the listing page and one public course page (/learn/writing-english-university) were read (robots.txt allows these paths for all agents and for the AI agents it names, which are barred only from /lecture/ and similar); they hold catalogue data and module/video ti"
+  },
+  {
    "source": "harvard",
    "why": "Not read: writingcenter.fas.harvard.edu returned HTTP 403 (Access Denied) to every request, including robots.txt and two guide pages (/strategies-essay-writing and /thesis), by both curl and web fetch; the block was not bypassed."
   },
@@ -21,8 +29,12 @@
    "why": "Not read. www.monash.edu answered HTTP 403 with a bot challenge page for robots.txt and for one Excel at Writing guide page (two attempts, two tools); the block was not bypassed. Nothing was written from memory."
   },
   {
-   "source": "purdue-owl",
-   "why": "Not read. owl.purdue.edu could not be reached from this session: curl failed TLS verification (the server's certificate chain could not be verified; verification was not disabled), and the fetch tool got HTTP 503 for both robots.txt and one guide page (the memo guide). Robots rules could not be chec"
+   "source": "openlearn-fiction",
+   "why": "the site answers ordinary readers with a challenge page; only a rendering of its pages could be had, not their own text, so the copy check and the page hash could not be made honestly. Not learned from."
+  },
+  {
+   "source": "quill",
+   "why": "An interactive classroom tool: the three public pages read (home page, /tools/connect, /tools/proofreader; robots.txt allows all) describe the product, its reports and the skills it targets, and give no writing advice. The practice activities themselves are interactive exercises, not pages of advice"
   },
   {
    "source": "scribbr",
@@ -43,6 +55,10 @@
   {
    "source": "unc",
    "why": "Not read, by choice of the reader - needs the caller's decision. writingcenter.unc.edu/robots.txt allows 'User-agent: *' (empty Disallow for content pages), so the brief's test passes; but the same file has a section 'Block AI Training & Large Language Model Bots' that names 'anthropic-ai' and 'Clau"
+  },
+  {
+   "source": "write-improve",
+   "why": "An interactive feedback tool: the two public pages read (home page and /free; the site serves no robots.txt, 404) describe how the tool works and give no writing advice; the writing tasks and feedback need the tool itself. No rules written."
   }
  ],
  "pages": [
@@ -4218,6 +4234,268 @@
   },
   {
    "by": "a model in a QueryBook build session",
+   "page_hash": "aa2ce9e30d2517a549ad9baa1e9ce9d5dd1f8675935202ac90532faa509d314a",
+   "retrieved": "2026-11-14",
+   "source": "mit-ocw-writing",
+   "title": "MIT OpenCourseWare 21W.755 Writing and Reading Short Stories (Spring 2012), session 8 lecture notes: Plot",
+   "units": [
+    {
+     "failure": "events with no driving cause",
+     "genre": "short-story",
+     "layer": "document structure",
+     "reason": "Events feel caused when they come from desire meeting resistance.",
+     "rule": "Derive the plot from three things: what the main character lacks and wants, what blocks it, and how the character tries to get past the block.",
+     "section": "Plot"
+    },
+    {
+     "failure": "story without conflict",
+     "genre": "short-story",
+     "layer": "document structure",
+     "reason": "Conflict is what turns a situation into a story.",
+     "rule": "Make sure something really stands between the character and the wish; a narrative without that opposition is not yet a story.",
+     "section": "Plot"
+    },
+    {
+     "failure": "implausible events",
+     "genre": "short-story",
+     "layer": "domain convention",
+     "reason": "Readers stop trusting a story the moment it strains belief.",
+     "rule": "Keep invented events plausible, even though actual life is allowed to be unbelievable; fiction is held to a stricter standard of credibility.",
+     "section": ""
+    },
+    {
+     "failure": "plot-driven story with hollow characters",
+     "genre": "short-story",
+     "layer": "document structure",
+     "reason": "The frame exists so the reader can make sense of what the character goes through.",
+     "rule": "Treat plot as the frame that holds up character and feeling, not as the thing the story is about.",
+     "section": "Plot"
+    },
+    {
+     "failure": "jumbled events hiding the emotional line",
+     "genre": "short-story",
+     "layer": "document structure",
+     "reason": "Arrangement is what makes inner experience understandable to someone outside it.",
+     "rule": "Order the incidents so that a reader can follow what the character is living through inwardly, leading up to the story's central moment.",
+     "section": "Plot"
+    },
+    {
+     "failure": "ending that needs late explanation",
+     "genre": "short-story",
+     "layer": "document structure",
+     "reason": "Early placement lets the outcome be understood when it arrives, even if the reader had forgotten the detail.",
+     "rule": "Supply the facts a reader will later depend on well ahead of the point where they matter.",
+     "section": "Plot"
+    },
+    {
+     "failure": "ending that comes from nowhere",
+     "genre": "short-story",
+     "layer": "document structure",
+     "reason": "An ending made of known pieces feels earned and one made of new pieces feels arbitrary.",
+     "rule": "Build the outcome from things the reader has already been shown; do not introduce a brand-new element to produce the ending.",
+     "section": "Ending"
+    },
+    {
+     "failure": "unreasonable twist",
+     "genre": "short-story",
+     "layer": "document structure",
+     "reason": "Too much surprise makes the close seem unbelievable.",
+     "rule": "Prepare surprises through the details chosen earlier, so that even an unexpected ending looks reasonable in hindsight.",
+     "section": "Ending"
+    },
+    {
+     "failure": "unsatisfying ending",
+     "genre": "short-story",
+     "layer": "document structure",
+     "reason": "That sense of rightness is what satisfies a reader of fiction.",
+     "rule": "Aim for a close that leaves the reader feeling the result is deserved, or else one that says something wise about unfairness.",
+     "section": "Ending"
+    },
+    {
+     "failure": "wasted detail in a short form",
+     "genre": "short-story",
+     "layer": "paragraph pattern",
+     "reason": "A short piece has no room for details with a single use.",
+     "rule": "Because the form is brief, choose details that do two jobs together, such as showing who a person is while also preparing what will happen.",
+     "section": ""
+    }
+   ],
+   "url": "https://ocw.mit.edu/courses/21w-755-writing-and-reading-short-stories-spring-2012/2a53fd7b143483542cb643467ba885d7_MIT21W_755S12_ses8.pdf"
+  },
+  {
+   "by": "a model in a QueryBook build session",
+   "page_hash": "4661f619978b7f86388590425fabd2f163283a0d9086a32d743531e818a6a35b",
+   "retrieved": "2026-11-14",
+   "source": "mit-ocw-writing",
+   "title": "MIT OpenCourseWare 21W.755 Writing and Reading Short Stories (Spring 2012), session 11 lecture notes: Point of View",
+   "units": [
+    {
+     "failure": "viewpoint chosen by default",
+     "genre": "short-story",
+     "layer": "rhetorical situation",
+     "reason": "Viewpoint changes nearly everything about how the same events read.",
+     "rule": "Decide on purpose who narrates, how much that narrator knows, and whether the reader should believe them.",
+     "section": "Point of view"
+    },
+    {
+     "failure": "head-hopping",
+     "genre": "short-story",
+     "layer": "rhetorical situation",
+     "reason": "A brief form lacks the space to establish more than one consciousness.",
+     "rule": "Hold a short piece to one viewpoint; leave movement among several characters' minds to the longer room of a novel.",
+     "section": "Point of view"
+    },
+    {
+     "failure": "abandoning a fixable draft",
+     "genre": "short-story",
+     "layer": "rhetorical situation",
+     "reason": "Retelling from elsewhere teaches the writer about the situation and may fix the draft.",
+     "rule": "If a draft is stuck, rewrite part of it in another grammatical person or through a different character, even only as a trial.",
+     "section": "Revision"
+    },
+    {
+     "failure": "viewpoint that cannot deliver needed information",
+     "genre": "short-story",
+     "layer": "rhetorical situation",
+     "reason": "Each choice trades intimacy against knowledge.",
+     "rule": "Weigh a first-person teller, who gives closeness and a distinctive voice but knows little, against a third-person teller, who can notice more but stands further off.",
+     "section": "Point of view"
+    },
+    {
+     "failure": "narrator knowing more or less than the timing allows",
+     "genre": "short-story",
+     "layer": "rhetorical situation",
+     "reason": "Temporal distance decides what the narrator can know and what suspense remains.",
+     "rule": "Choose how far in time the telling stands from the events: an unfolding present gives urgency without hindsight, a distant past allows comment but reveals the teller survived.",
+     "section": "Point of view"
+    },
+    {
+     "failure": "unreliable narrator the reader cannot see through",
+     "genre": "short-story",
+     "layer": "rhetorical situation",
+     "reason": "Without a visible reality the reader cannot detect the unreliability.",
+     "rule": "With a narrator who cannot be trusted, let the reader see what is actually going on apart from what the narrator claims.",
+     "section": "Point of view"
+    },
+    {
+     "failure": "unreliability used as a gimmick",
+     "genre": "short-story",
+     "layer": "rhetorical situation",
+     "reason": "The cause of unreliability is part of the meaning, not decoration.",
+     "rule": "Show why an untrustworthy narrator is so, whether through motive, lying, ignorance or misreading, and make that discovery matter to the story's central moment.",
+     "section": "Point of view"
+    },
+    {
+     "failure": "shapeless stretches of action",
+     "genre": "scene",
+     "layer": "document structure",
+     "reason": "Each change of company changes the interaction that can occur.",
+     "rule": "Divide the action into units defined by who is present: a new unit starts whenever a person arrives or leaves and the group changes.",
+     "section": ""
+    },
+    {
+     "failure": "scenes that do not advance the story",
+     "genre": "scene",
+     "layer": "document structure",
+     "reason": "A scene with no bearing on that moment slows and blurs the story.",
+     "rule": "Keep only scenes that carry the narrative toward its central moment and are tied closely to it.",
+     "section": ""
+    }
+   ],
+   "url": "https://ocw.mit.edu/courses/21w-755-writing-and-reading-short-stories-spring-2012/393e467ec577db781f2ed8f49499c304_MIT21W_755S12_ses11.pdf"
+  },
+  {
+   "by": "a model in a QueryBook build session",
+   "page_hash": "145e0f9c1cbc8149b454610577bca54547c0ac3f9e0c7e8ef8f1568f02c31a82",
+   "retrieved": "2026-11-14",
+   "source": "mit-ocw-writing",
+   "title": "MIT OpenCourseWare 21W.794 Graduate Technical Writing Workshop (IAP 2019), lecture notes 5: Revision",
+   "units": [
+    {
+     "failure": "disorganised draft nobody notices",
+     "genre": "research-paper",
+     "layer": "document structure",
+     "reason": "A bare list of topics exposes the order of ideas that full prose hides.",
+     "rule": "Once a draft exists, write down the single topic of every paragraph in sequence and study that list to judge how the paper is organised.",
+     "section": "Revision"
+    },
+    {
+     "failure": "overloaded paragraph",
+     "genre": "research-paper",
+     "layer": "paragraph pattern",
+     "reason": "A reader can hold one subject per paragraph and loses the thread when several are packed together.",
+     "rule": "Where the topic list shows one paragraph handling several separate subjects, divide it so that each subject gets a paragraph to itself.",
+     "section": "Body"
+    },
+    {
+     "failure": "paragraphs unrelated to the thesis",
+     "genre": "research-paper",
+     "layer": "document structure",
+     "reason": "Material that does not serve the thesis dilutes the argument.",
+     "rule": "Hold each paragraph's topic against the paper's overall claim and question any paragraph that does not help to establish that claim.",
+     "section": "Body"
+    },
+    {
+     "failure": "argument in drafting order",
+     "genre": "research-paper",
+     "layer": "document structure",
+     "reason": "The order in which ideas were drafted is rarely the order that argues best.",
+     "rule": "After listing paragraph topics, ask whether a different sequence would build the claim better, and move paragraphs accordingly.",
+     "section": "Body"
+    },
+    {
+     "failure": "sentences that do not connect",
+     "genre": "any",
+     "layer": "sentence flow",
+     "reason": "Linking backward first lets each sentence attach to the one before it.",
+     "rule": "Start a sentence with material the reader already knows from the preceding text and save the fresh information for its close.",
+     "section": ""
+    },
+    {
+     "failure": "unstated logical relations",
+     "genre": "any",
+     "layer": "sentence flow",
+     "reason": "Explicit signals spare the reader from guessing how two statements relate.",
+     "rule": "Add linking and ordering words where sentences contrast, follow in a series or enumerate reasons, so the relation between them is visible.",
+     "section": ""
+    },
+    {
+     "failure": "drifting sentence subjects",
+     "genre": "any",
+     "layer": "sentence flow",
+     "reason": "A steady set of subjects makes the paragraph read as being about one thing.",
+     "rule": "Across a paragraph, keep the grammatical subjects of the sentences on the same few things instead of shifting to a new subject each time.",
+     "section": ""
+    },
+    {
+     "failure": "nominalised, heavy sentences",
+     "genre": "any",
+     "layer": "sentence flow",
+     "reason": "Verbs carry action more directly and with fewer words.",
+     "rule": "Put the action of a sentence into its verb; do not bury it in a noun or adjective propped up by a weak verb.",
+     "section": ""
+    },
+    {
+     "failure": "paragraph whose point arrives late",
+     "genre": "research-paper",
+     "layer": "paragraph pattern",
+     "reason": "Readers need the subject early to interpret the detail that follows.",
+     "rule": "Make clear what a paragraph is about no later than its second sentence.",
+     "section": "Body"
+    },
+    {
+     "failure": "revision limited to wording",
+     "genre": "research-paper",
+     "layer": "document structure",
+     "reason": "Checking distinct levels in turn stops attention going only to surface wording.",
+     "rule": "When reviewing a draft, look separately at the introduction, the overall arrangement, completeness of coverage, the handling of sources, the guiding commentary and sentence construction.",
+     "section": "Revision"
+    }
+   ],
+   "url": "https://ocw.mit.edu/courses/21w-794-graduate-technical-writing-workshop-january-iap-2019/607e0d5169c81edba06e1fb0c8e42b3e_MIT21W_794IAP19_lec5.pdf"
+  },
+  {
+   "by": "a model in a QueryBook build session",
    "page_hash": "b28ba6fd94105ae7a74de1125dce65ea896a8f9ed449f26207f432f53c23ec39",
    "retrieved": "2026-11-13",
    "source": "nngroup",
@@ -4858,6 +5136,260 @@
   },
   {
    "by": "a model in a QueryBook build session",
+   "page_hash": "eab577967ffb1a69b922667167b8183bb2cec7670f4c964f42fa03591d5e1b13",
+   "retrieved": "2026-11-14",
+   "source": "purdue-owl",
+   "title": "On Paragraphs (Purdue OWL)",
+   "units": [
+    {
+     "failure": "paragraphs mixing several ideas",
+     "genre": "any",
+     "layer": "paragraph pattern",
+     "reason": "Readers follow organised ideas and get lost when they run together.",
+     "rule": "Give each paragraph a single idea, and begin another paragraph once the writing moves on to a different idea.",
+     "section": ""
+    },
+    {
+     "failure": "bloated paragraph",
+     "genre": "any",
+     "layer": "paragraph pattern",
+     "reason": "Long sub-points crowd out the subject they were meant to support.",
+     "rule": "Let several small points share a paragraph only while they serve its overall subject; when any grows lengthy, expand it into a separate paragraph.",
+     "section": ""
+    },
+    {
+     "failure": "paragraph that wanders",
+     "genre": "any",
+     "layer": "paragraph pattern",
+     "reason": "A paragraph that drifts leaves the reader unsure what it was for.",
+     "rule": "Keep one focus from the first sentence of a paragraph to the last; do not finish on a different matter from the one it opened with.",
+     "section": ""
+    },
+    {
+     "failure": "choppy, disconnected sentences",
+     "genre": "any",
+     "layer": "sentence flow",
+     "reason": "Continuity of subject and form makes the logic easy to follow.",
+     "rule": "Carry the same subject forward from sentence to sentence, and build neighbouring sentences on a similar grammatical pattern where that fits.",
+     "section": ""
+    },
+    {
+     "failure": "sentences that seem unrelated",
+     "genre": "any",
+     "layer": "sentence flow",
+     "reason": "These verbal ties show that the sentences belong to one line of thought.",
+     "rule": "Tie sentences together with repeated key terms, words of like meaning, pronouns pointing back to earlier nouns, and linking words.",
+     "section": ""
+    },
+    {
+     "failure": "paragraph with a hidden point",
+     "genre": "any",
+     "layer": "paragraph pattern",
+     "reason": "An early statement guarantees the reader knows the paragraph's subject.",
+     "rule": "Announce the paragraph's subject in a sentence placed close to its start, particularly if you are a less practised writer.",
+     "section": ""
+    },
+    {
+     "failure": "pointless paragraph",
+     "genre": "any",
+     "layer": "paragraph pattern",
+     "reason": "A paragraph that cannot be summed up has no clear point.",
+     "rule": "Test every paragraph by trying to say in brief what it is about; if that is hard, rework it.",
+     "section": ""
+    },
+    {
+     "failure": "underdeveloped paragraph",
+     "genre": "any",
+     "layer": "paragraph pattern",
+     "reason": "Very short paragraphs usually assert without developing.",
+     "rule": "Treat a paragraph of only two or three sentences as a warning that its subject has probably not been discussed fully.",
+     "section": ""
+    },
+    {
+     "failure": "bare assertion without support",
+     "genre": "any",
+     "layer": "paragraph pattern",
+     "reason": "Each of these gives the reader grounds for accepting or understanding the point.",
+     "rule": "Develop a paragraph with means such as examples, data, what others have said, a brief story, definitions, comparison, causes, effects, analysis, description or a timeline.",
+     "section": ""
+    },
+    {
+     "failure": "blurred contrast",
+     "genre": "any",
+     "layer": "paragraph pattern",
+     "reason": "The break makes the opposition visible.",
+     "rule": "Use separate paragraphs to set contrasting positions or pieces of information against each other.",
+     "section": ""
+    },
+    {
+     "failure": "wall of text",
+     "genre": "any",
+     "layer": "paragraph pattern",
+     "reason": "Pauses make dense writing easier to read.",
+     "rule": "Break a paragraph when it has become very long or its material is difficult, to give the reader a rest.",
+     "section": ""
+    },
+    {
+     "failure": "introduction or conclusion merged into the body",
+     "genre": "any",
+     "layer": "document structure",
+     "reason": "Readers expect the beginning and the end to be marked off.",
+     "rule": "Keep opening material and closing material in paragraphs of their own, apart from the body; either may take more than one paragraph.",
+     "section": "Introduction"
+    },
+    {
+     "failure": "reader lost in a long document",
+     "genre": "any",
+     "layer": "document structure",
+     "reason": "Such guides help readers keep their place.",
+     "rule": "In longer pieces, insert short passages that recall what has been covered and say what comes next.",
+     "section": ""
+    },
+    {
+     "failure": "abrupt jumps between paragraphs",
+     "genre": "any",
+     "layer": "paragraph pattern",
+     "reason": "The hand-over makes consecutive paragraphs flow.",
+     "rule": "Close most paragraphs with a sentence or more that leads from the current idea into the following one.",
+     "section": ""
+    }
+   ],
+   "url": "https://owl.purdue.edu/owl/general_writing/academic_writing/paragraphs_and_paragraphing/index.html"
+  },
+  {
+   "by": "a model in a QueryBook build session",
+   "page_hash": "a223b60be01beb42e9804d1d3c409d5e7b50f096c1860f9a94e925666ede9041",
+   "retrieved": "2026-11-14",
+   "source": "purdue-owl",
+   "title": "Writing Transitions (Purdue OWL)",
+   "units": [
+    {
+     "failure": "paragraphs read as isolated items",
+     "genre": "any",
+     "layer": "paragraph pattern",
+     "reason": "Showing the connection lets readers see paragraphs working toward a larger point.",
+     "rule": "Build a transition by pointing out how the new paragraph connects with the one before, referring back to the relevant earlier material.",
+     "section": "Transitions"
+    },
+    {
+     "failure": "forced link between unrelated paragraphs",
+     "genre": "any",
+     "layer": "paragraph pattern",
+     "reason": "Difficulty linking is a sign of a problem in the arrangement.",
+     "rule": "Begin a paragraph at the point where the last one stopped; if that proves very hard, ask whether the two should sit together.",
+     "section": "Transitions"
+    },
+    {
+     "failure": "lost thread between paragraphs",
+     "genre": "any",
+     "layer": "sentence flow",
+     "reason": "The echoed term gives the reader an obvious line of progress.",
+     "rule": "Repeat an important term from the end of the preceding paragraph near the start of the next.",
+     "section": "Transitions"
+    },
+    {
+     "failure": "empty filler transition",
+     "genre": "any",
+     "layer": "paragraph pattern",
+     "reason": "A generic link announces a new point without relating it to the old.",
+     "rule": "Write a link that fits only these two paragraphs; avoid an all-purpose phrase that could join any pair.",
+     "section": "Transitions"
+    },
+    {
+     "failure": "additive transition that hides the logic",
+     "genre": "any",
+     "layer": "sentence flow",
+     "reason": "Naming the relation is what joins the two ideas.",
+     "rule": "Let the link state the actual relation, such as cause, sequence in time or contrast, instead of merely saying that another point follows.",
+     "section": "Transitions"
+    },
+    {
+     "failure": "overlong transition",
+     "genre": "any",
+     "layer": "sentence flow",
+     "reason": "Long bridging passages delay the new point.",
+     "rule": "Keep the link short; a handful of words is often enough to make the connection.",
+     "section": "Transitions"
+    }
+   ],
+   "url": "https://owl.purdue.edu/owl/general_writing/mechanics/transitions_and_transitional_devices/index.html"
+  },
+  {
+   "by": "a model in a QueryBook build session",
+   "page_hash": "36598a3a424b0064558ed117f55c6fb8e147a56d7886f917af78be7feaf13efa",
+   "retrieved": "2026-11-14",
+   "source": "purdue-owl",
+   "title": "Tips and Examples for Writing Thesis Statements (Purdue OWL)",
+   "units": [
+    {
+     "failure": "thesis that mismatches the paper's purpose",
+     "genre": "essay",
+     "layer": "rhetorical situation",
+     "reason": "The thesis has to promise the same job the paper then performs.",
+     "rule": "Before drafting the thesis, settle whether the paper analyses, explains or argues, because each purpose calls for a different sort of thesis.",
+     "section": "Thesis"
+    },
+    {
+     "failure": "analytical thesis with no evaluation",
+     "genre": "essay",
+     "layer": "document structure",
+     "reason": "Analysis consists of a breakdown plus an evaluation, and readers need to be told both.",
+     "rule": "In an analytical paper, let the thesis name the matter being taken apart and the judgement reached, and have the body explain both.",
+     "section": "Thesis"
+    },
+    {
+     "failure": "argument with no clear claim",
+     "genre": "essay",
+     "layer": "document structure",
+     "reason": "The aim is to persuade, which requires a position and grounds for it.",
+     "rule": "In an argumentative paper, state a debatable claim such as a judgement, proposal, causal link or reading, and back it with particular evidence.",
+     "section": "Thesis"
+    },
+    {
+     "failure": "body that wanders from the thesis",
+     "genre": "essay",
+     "layer": "document structure",
+     "reason": "The reader uses the thesis as a map of what will be covered.",
+     "rule": "In an explanatory paper, have the thesis list the aspects to be explained and then explain each one in the body.",
+     "section": "Thesis"
+    },
+    {
+     "failure": "vague or over-broad thesis",
+     "genre": "essay",
+     "layer": "document structure",
+     "reason": "A broad thesis promises more than the paper delivers.",
+     "rule": "Narrow the thesis until it covers nothing beyond what the paper really treats and can be supported with particular evidence.",
+     "section": "Thesis"
+    },
+    {
+     "failure": "thesis the reader cannot find",
+     "genre": "essay",
+     "layer": "document structure",
+     "reason": "Readers look for the main point at that spot.",
+     "rule": "Place the thesis, as a rule, as the final sentence or two of the opening paragraph.",
+     "section": "Introduction"
+    },
+    {
+     "failure": "thesis left behind by the draft",
+     "genre": "essay",
+     "layer": "document structure",
+     "reason": "The thesis must describe the paper that exists, not the one first planned.",
+     "rule": "After drafting, reread the thesis and rewrite it if the paper's subject shifted during writing.",
+     "section": "Revision"
+    },
+    {
+     "failure": "reader unsure of the point",
+     "genre": "any",
+     "layer": "document structure",
+     "reason": "A stated point helps the reader know what the piece is driving at.",
+     "rule": "Even in writing that is not analysis, explanation or argument, such as a narrative, consider stating a main point in the opening paragraph.",
+     "section": "Introduction"
+    }
+   ],
+   "url": "https://owl.purdue.edu/owl/general_writing/the_writing_process/thesis_statement_tips.html"
+  },
+  {
+   "by": "a model in a QueryBook build session",
    "page_hash": "50dd79bd5b8f7a37a48ad9c53f1e7f2be640383231d99a1afc89c527f2bb25ef",
    "retrieved": "2026-11-13",
    "source": "queensland",
@@ -5107,6 +5639,300 @@
     }
    ],
    "url": "https://my.uq.edu.au/information-and-services/student-support/study-skills/assignment-writing/how-write-literature-review"
+  },
+  {
+   "by": "a model in a QueryBook build session",
+   "page_hash": "b4a964fb711bf34667e3dbbdfe62b4d70c978e2e9ef83b90daab8cd7ac7796db",
+   "retrieved": "2026-11-14",
+   "source": "reedsy-learning",
+   "title": "What is a Character Arc? 3 Common Types and Examples from Fiction (Reedsy)",
+   "units": [
+    {
+     "failure": "arc with no inner obstacle",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "These three elements drive every kind of inner journey.",
+     "rule": "Define three things for a lead: an aim, a mistaken belief about self or world that blocks it, and the understanding needed to get past that belief.",
+     "section": "Character arc"
+    },
+    {
+     "failure": "flawless, static protagonist",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "A perfect person has no room to develop, and readers identify with flaws.",
+     "rule": "Give the lead genuine flaws and weaknesses that leave something to work on and overcome.",
+     "section": "Character arc"
+    },
+    {
+     "failure": "unearned transformation",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "Growth is shown by failure followed by learning.",
+     "rule": "For an arc of growth, let the mistaken belief cause repeated failures until the lead learns, drops it and reaches the aim or a revised one.",
+     "section": "Character arc"
+    },
+    {
+     "failure": "unchanging lead with no struggle",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "A steady character still needs opposition to create a story.",
+     "rule": "For a lead who does not change, make the challenge one of keeping conviction against doubt, and let the surrounding people be the ones who change.",
+     "section": "Character arc"
+    },
+    {
+     "failure": "arbitrary downfall",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "The refusal to learn is what makes the fall the character's own doing.",
+     "rule": "For a downward arc, offer the lead chances to learn and have each refused, so early gains give way to decline that also harms others.",
+     "section": "Character arc"
+    },
+    {
+     "failure": "change told instead of shown",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "Change that sits outside the plot is not felt.",
+     "rule": "Show inner change through how the person responds to obstacles and through decisions made; it may be modest but must be central to events.",
+     "section": "Character arc"
+    },
+    {
+     "failure": "hook unrelated to the character's journey",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "The transformation is the essence of what the book is about.",
+     "rule": "Sketch the lead's transformation at the planning stage and use it when working out the book's hook.",
+     "section": "Outline"
+    },
+    {
+     "failure": "forcing change on a series lead",
+     "genre": "novel-chapter",
+     "layer": "domain convention",
+     "reason": "A consistent, familiar persona is part of what readers return for.",
+     "rule": "In a series built on a recurring investigator, a lead whose core nature stays the same from book to book is an accepted pattern.",
+     "section": "Character arc"
+    }
+   ],
+   "url": "https://reedsy.com/blog/character-arc/"
+  },
+  {
+   "by": "a model in a QueryBook build session",
+   "page_hash": "6ba8973858f6b0c0b0c6d61f892ec301bec22c45083dc18f01b274523c3ae20c",
+   "retrieved": "2026-11-14",
+   "source": "reedsy-learning",
+   "title": "Story Structure: 7 Types All Writers Should Know (Reedsy)",
+   "units": [
+    {
+     "failure": "story missing a stage",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "These stages recur across most narrative models and give readers a complete experience.",
+     "rule": "Plan five stages: ordinary life and desire ending in a triggering event, pursuit under test, a peak, its consequences, and a close.",
+     "section": "Plot structure"
+    },
+    {
+     "failure": "sequence of events without conflict",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "Without tests there is only a string of happenings that will not hold interest.",
+     "rule": "Even in a quiet genre, include growing difficulty and a point where success looks impossible.",
+     "section": "Plot structure"
+    },
+    {
+     "failure": "loose ends",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "A controlled finish is what makes the experience satisfying.",
+     "rule": "Use the close to bring plot, character change and theme together and to answer the questions the narrative raised.",
+     "section": "Ending"
+    },
+    {
+     "failure": "accidental rule-breaking",
+     "genre": "novel-chapter",
+     "layer": "rhetorical situation",
+     "reason": "Writers who break conventions well understand why the conventions exist.",
+     "rule": "Learn the conventional shapes thoroughly before departing from them, and depart only deliberately and with a purpose.",
+     "section": "Plot structure"
+    },
+    {
+     "failure": "plot with no centre",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "Those three answers identify the core that subplots attach to.",
+     "rule": "Find the basis of the plot by asking whose book it is, what that person is after, and what stands in the way.",
+     "section": "Plot structure"
+    },
+    {
+     "failure": "aimless middle",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "A known destination gives the structure a direction.",
+     "rule": "Decide how the book ends before arranging the rest.",
+     "section": "Plot structure"
+    },
+    {
+     "failure": "scene that takes up space",
+     "genre": "scene",
+     "layer": "document structure",
+     "reason": "A scene with no function only fills pages.",
+     "rule": "Before drafting a scene, know who appears, where it is set, what occurs and what it contributes: forward movement or insight into a person.",
+     "section": ""
+    },
+    {
+     "failure": "formulaic story",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "Originality comes from the character's choices, not from the template.",
+     "rule": "Use a structural model as support, and at each of its stages ask what this particular character alone would do.",
+     "section": "Plot structure"
+    },
+    {
+     "failure": "outline followed mechanically",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "Writing is discovery and a plan followed rigidly flattens the result.",
+     "rule": "While drafting, let the narrative override the plan when it calls for an unplanned scene or a change.",
+     "section": "Plot structure"
+    },
+    {
+     "failure": "no turning point into the middle",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "Beginning, middle and end is the simplest dependable shape.",
+     "rule": "In three parts: establish people, time and place; let an event force the lead irreversibly into a middle full of obstacles; then give the outcome.",
+     "section": "Plot structure"
+    },
+    {
+     "failure": "story ending at the first victory",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "The final trial proves the change the journey produced.",
+     "rule": "After the hero wins the prize, do not stop: let the win bring fresh trouble and a last test that draws on what was learned.",
+     "section": "Plot structure"
+    },
+    {
+     "failure": "genre expectation ignored",
+     "genre": "novel-chapter",
+     "layer": "domain convention",
+     "reason": "Modern audiences have little appetite for purely tragic outcomes.",
+     "rule": "In commercial fiction, expect readers to want the lead to overcome obstacles and gain some success; reserve the tragic five-part shape for dark tales.",
+     "section": "Ending"
+    }
+   ],
+   "url": "https://reedsy.com/blog/guide/story-structure/"
+  },
+  {
+   "by": "a model in a QueryBook build session",
+   "page_hash": "d28329f57d2fc462b7e8521782ba34e5bbd7e58de248b4d70c37e3a89f21a2d6",
+   "retrieved": "2026-11-14",
+   "source": "reedsy-learning",
+   "title": "How to Outline a Novel in 9 Simple Steps (Reedsy)",
+   "units": [
+    {
+     "failure": "stalling over a perfect plan",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "The book evolves during writing, and judging early stalls the work.",
+     "rule": "Treat an outline made before drafting as a frame to start from that will change, and do not judge the ideas while making it.",
+     "section": "Outline"
+    },
+    {
+     "failure": "outline with no central line",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "One journey gives the first outline a clear line.",
+     "rule": "Begin the outline with a single lead and a single large problem or aim; further leads can be added afterwards.",
+     "section": "Outline"
+    },
+    {
+     "failure": "stakes nobody cares about",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "Importance to the character is what makes readers care.",
+     "rule": "Choose a problem whose stakes matter greatly to the lead, whether those stakes are large or small in the world.",
+     "section": "Outline"
+    },
+    {
+     "failure": "story that never starts",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "That event and response set the narrative moving.",
+     "rule": "Pin down the event at which the lead first becomes aware of the problem, then the first step taken in response.",
+     "section": "Outline"
+    },
+    {
+     "failure": "problem solved too early",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "If the first attempt worked there would be nothing left to tell.",
+     "rule": "Make sure the lead's first step fails or merely uncovers the next step; it must not settle the problem.",
+     "section": "Outline"
+    },
+    {
+     "failure": "passive protagonist",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "Readers stay with someone who is visibly trying.",
+     "rule": "Keep the lead acting and persisting toward the aim, mistakes included.",
+     "section": "Outline"
+    },
+    {
+     "failure": "flat middle",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "Rising difficulty keeps tension growing.",
+     "rule": "Plan between three and five obstacles and arrange them so each is worse than the last.",
+     "section": "Outline"
+    },
+    {
+     "failure": "no crisis before the ending",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "This darkest beat is the largest obstacle and sets up the resolution.",
+     "rule": "Somewhere in the later half, include a low point at which the aim appears completely out of reach.",
+     "section": "Outline"
+    },
+    {
+     "failure": "resolution by luck",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "A resolution through insight differs from, and deepens, the original aim.",
+     "rule": "To resolve the low point, compare what the lead desires with what the lead requires; the exit often lies in a new self-understanding.",
+     "section": "Ending"
+    },
+    {
+     "failure": "character who does not change",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "Stating the change makes the journey concrete.",
+     "rule": "Write down how the lead begins and how the lead finishes, and name the specific thing that caused the difference.",
+     "section": "Outline"
+    },
+    {
+     "failure": "ending disconnected from the opening",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "Parallel scenes let the reader measure the distance travelled.",
+     "rule": "Consider pairing the first and last scenes around one place or object, shown differently, so the lead's change is visible.",
+     "section": "Ending"
+    },
+    {
+     "failure": "outline too detailed to revise",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "Brief movable notes are easy to rearrange.",
+     "rule": "Summarise each key scene in a single sentence on a movable card: opening, trigger, first step, three obstacles, low point, resolution, last scene.",
+     "section": "Outline"
+    },
+    {
+     "failure": "revising against an outdated plan",
+     "genre": "novel-chapter",
+     "layer": "document structure",
+     "reason": "The writer's grasp of the plot will have changed by then.",
+     "rule": "When the draft is finished, repeat the outlining exercise using what was actually written.",
+     "section": "Revision"
+    }
+   ],
+   "url": "https://reedsy.com/studio/resources/how-to-outline-a-novel/"
   },
   {
    "by": "a model in a QueryBook build session",

@@ -207,3 +207,13 @@ ul.points { margin: 10px 0 0; padding-left: 20px; } ul.points li { margin: 4px 0
 .asksuggest { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
   padding: 6px 10px; background: var(--card, #fff); border: 1px solid var(--line, #d9dee7); border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,.08); }
 .asksuggest[hidden] { display: none; }
+
+.stylegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.stylecard{padding:12px;margin:0}
+.stylecard.on{border-color:var(--accent,#2f5bb7);box-shadow:0 0 0 2px rgba(47,91,183,.18)}
+
+.doctypepick{background:rgba(47,91,183,.06);border-radius:10px;padding:8px 10px;margin-bottom:8px;flex-wrap:wrap}
+
+.ctlbox{border:1px solid rgba(47,91,183,.25);border-radius:10px;padding:8px 10px;margin-bottom:8px}
+.ctlgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px 12px;margin:8px 0}
+.ctlgrid select{max-width:100%}

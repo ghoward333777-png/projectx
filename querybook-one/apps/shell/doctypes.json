@@ -1,0 +1,8175 @@
+{
+ "version": "doctypes-1",
+ "source": "the user's universal document-type taxonomy, 2026-11-14 (tools/doctypes_source.txt)",
+ "purposes": [
+  "Inform",
+  "Explain",
+  "Describe",
+  "Record",
+  "Analyze",
+  "Compare",
+  "Argue",
+  "Persuade",
+  "Recommend",
+  "Request",
+  "Authorize",
+  "Regulate",
+  "Contract",
+  "Prove/Evidence",
+  "Teach",
+  "Instruct",
+  "Predict",
+  "Evaluate",
+  "Document/Archive",
+  "Entertain"
+ ],
+ "domains": [
+  {
+   "n": 1,
+   "name": "Books, Publishing & Long-Form Works",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "1-book",
+       "name": "Book",
+       "elements": [
+        "Title",
+        "author",
+        "copyright/front matter",
+        "table of contents",
+        "introduction/preface",
+        "chapters",
+        "sections",
+        "figures/tables",
+        "notes",
+        "references",
+        "appendices",
+        "index"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-booklet",
+       "name": "Booklet",
+       "elements": [
+        "Cover/title",
+        "introduction",
+        "short sections",
+        "illustrations",
+        "instructions/information",
+        "contact/resource information"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-monograph",
+       "name": "Monograph",
+       "elements": [
+        "Title",
+        "abstract/overview",
+        "focused thesis",
+        "chapters",
+        "evidence",
+        "citations",
+        "bibliography"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-textbook",
+       "name": "Textbook",
+       "elements": [
+        "Units",
+        "chapters",
+        "learning objectives",
+        "explanatory text",
+        "examples",
+        "figures",
+        "exercises",
+        "summaries",
+        "glossary",
+        "references",
+        "index"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-reference-book",
+       "name": "Reference book",
+       "elements": [
+        "Organized entries",
+        "definitions/facts",
+        "cross-references",
+        "citations",
+        "indexes"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-handbook",
+       "name": "Handbook",
+       "elements": [
+        "Topic-based sections",
+        "procedures",
+        "recommendations",
+        "reference material",
+        "appendices"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-manual",
+       "name": "Manual",
+       "elements": [
+        "Purpose",
+        "requirements",
+        "procedures",
+        "warnings",
+        "diagrams",
+        "troubleshooting",
+        "references"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-guidebook",
+       "name": "Guidebook",
+       "elements": [
+        "Overview",
+        "categorized guidance",
+        "recommendations",
+        "instructions",
+        "maps/data/resources"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-workbook",
+       "name": "Workbook",
+       "elements": [
+        "Instruction",
+        "exercises",
+        "prompts",
+        "worksheets",
+        "examples",
+        "answer areas"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-encyclopedia-entry",
+       "name": "Encyclopedia entry",
+       "elements": [
+        "Subject heading",
+        "overview",
+        "factual sections",
+        "references",
+        "related entries"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-dictionary-entry",
+       "name": "Dictionary entry",
+       "elements": [
+        "Headword",
+        "pronunciation",
+        "definitions",
+        "usage",
+        "etymology",
+        "examples"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-anthology",
+       "name": "Anthology",
+       "elements": [
+        "Editor's introduction",
+        "individual works",
+        "author information",
+        "notes"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-biography",
+       "name": "Biography",
+       "elements": [
+        "Subject background",
+        "chronology",
+        "life events",
+        "achievements",
+        "interpretation",
+        "sources"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-autobiography",
+       "name": "Autobiography",
+       "elements": [
+        "First-person chronology",
+        "experiences",
+        "reflection",
+        "supporting material"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-memoir",
+       "name": "Memoir",
+       "elements": [
+        "Selected experiences",
+        "narrative episodes",
+        "reflections",
+        "thematic development"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-e-book",
+       "name": "E-book",
+       "elements": [
+        "Book structure plus hyperlinks",
+        "metadata and potentially multimedia/interactivity"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "1-rich-media-book",
+       "name": "Rich-media book",
+       "elements": [
+        "Text",
+        "images",
+        "audio",
+        "video",
+        "charts",
+        "interactive questions",
+        "forms",
+        "simulations and linked resources"
+       ],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 2,
+   "name": "Journalism & News",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "2-newspaper-article",
+       "name": "Newspaper article",
+       "elements": [
+        "Headline",
+        "byline",
+        "dateline",
+        "lead",
+        "key facts",
+        "supporting details",
+        "quotations",
+        "background"
+       ],
+       "genre": "news-report"
+      },
+      {
+       "id": "2-breaking-news-report",
+       "name": "Breaking-news report",
+       "elements": [
+        "Headline",
+        "immediate facts",
+        "verified developments",
+        "sources",
+        "updates"
+       ],
+       "genre": "news-report"
+      },
+      {
+       "id": "2-feature-article",
+       "name": "Feature article",
+       "elements": [
+        "Narrative lead",
+        "subject context",
+        "interviews",
+        "descriptive sections",
+        "conclusion"
+       ],
+       "genre": "feature"
+      },
+      {
+       "id": "2-investigative-article",
+       "name": "Investigative article",
+       "elements": [
+        "Investigation question",
+        "evidence",
+        "records",
+        "interviews",
+        "findings",
+        "response from affected parties"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "2-news-analysis",
+       "name": "News analysis",
+       "elements": [
+        "Event summary",
+        "context",
+        "interpretation",
+        "evidence",
+        "implications"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "2-editorial",
+       "name": "Editorial",
+       "elements": [
+        "Issue",
+        "institutional position",
+        "argument",
+        "supporting evidence",
+        "conclusion"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "2-op-ed",
+       "name": "Op-ed",
+       "elements": [
+        "Author viewpoint",
+        "thesis",
+        "arguments",
+        "evidence/examples",
+        "conclusion"
+       ],
+       "genre": "op-ed"
+      },
+      {
+       "id": "2-column",
+       "name": "Column",
+       "elements": [
+        "Recurring author perspective",
+        "topic",
+        "commentary",
+        "conclusion"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "2-interview",
+       "name": "Interview",
+       "elements": [
+        "Introduction",
+        "interviewer questions",
+        "responses",
+        "contextual notes"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "2-review",
+       "name": "Review",
+       "elements": [
+        "Work/product examined",
+        "criteria",
+        "observations",
+        "evaluation",
+        "recommendation"
+       ],
+       "genre": "review"
+      },
+      {
+       "id": "2-fact-check",
+       "name": "Fact-check",
+       "elements": [
+        "Claim",
+        "source",
+        "evidence",
+        "verification process",
+        "conclusion/rating"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "2-news-brief",
+       "name": "News brief",
+       "elements": [
+        "Headline",
+        "concise event description",
+        "key facts"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "2-press-dispatch",
+       "name": "Press dispatch",
+       "elements": [
+        "Location/date",
+        "event description",
+        "observations",
+        "quotations"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "2-obituary",
+       "name": "Obituary",
+       "elements": [
+        "Identity",
+        "life history",
+        "accomplishments",
+        "survivors",
+        "death information where appropriate"
+       ],
+       "genre": "obituary"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 3,
+   "name": "Magazines, Blogs & Digital Publishing",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "3-magazine-article",
+       "name": "Magazine article",
+       "elements": [
+        "Headline",
+        "deck/subheading",
+        "byline",
+        "opening hook",
+        "body",
+        "quotations",
+        "images",
+        "conclusion"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "3-magazine-feature",
+       "name": "Magazine feature",
+       "elements": [
+        "Narrative opening",
+        "personalities/events",
+        "context",
+        "extensive reporting",
+        "conclusion"
+       ],
+       "genre": "feature"
+      },
+      {
+       "id": "3-blog-post",
+       "name": "Blog post",
+       "elements": [
+        "Title",
+        "introduction",
+        "headings",
+        "main discussion",
+        "links/resources",
+        "conclusion"
+       ],
+       "genre": "blog-post"
+      },
+      {
+       "id": "3-explainer",
+       "name": "Explainer",
+       "elements": [
+        "Question/topic",
+        "background",
+        "explanation",
+        "examples",
+        "takeaway"
+       ],
+       "genre": "explainer"
+      },
+      {
+       "id": "3-listicle",
+       "name": "Listicle",
+       "elements": [
+        "Introduction",
+        "numbered/ranked items",
+        "explanation of each"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "3-how-to-article",
+       "name": "How-to article",
+       "elements": [
+        "Goal",
+        "requirements",
+        "steps",
+        "examples",
+        "cautions",
+        "outcome"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "3-buying-guide",
+       "name": "Buying guide",
+       "elements": [
+        "Product category",
+        "criteria",
+        "alternatives",
+        "comparisons",
+        "recommendations"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "3-newsletter",
+       "name": "Newsletter",
+       "elements": [
+        "Header",
+        "introductory message",
+        "stories/updates",
+        "links",
+        "call to action"
+       ],
+       "genre": "newsletter"
+      },
+      {
+       "id": "3-faq",
+       "name": "FAQ",
+       "elements": [
+        "Questions paired with concise answers"
+       ],
+       "genre": "faq"
+      },
+      {
+       "id": "3-knowledge-base-article",
+       "name": "Knowledge-base article",
+       "elements": [
+        "Problem/question",
+        "explanation",
+        "solution/procedure",
+        "related resources"
+       ],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 4,
+   "name": "Essays & Argumentative Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "4-analytical-essay",
+       "name": "Analytical essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "4-argumentative-essay",
+       "name": "Argumentative essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "essay",
+       "from_group": true
+      },
+      {
+       "id": "4-expository-essay",
+       "name": "Expository essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "4-persuasive-essay",
+       "name": "Persuasive essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "4-compare-and-contrast-essay",
+       "name": "Compare-and-contrast essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "4-cause-and-effect-essay",
+       "name": "Cause-and-effect essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "4-definition-essay",
+       "name": "Definition essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "4-descriptive-essay",
+       "name": "Descriptive essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "4-narrative-essay",
+       "name": "Narrative essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "4-critical-essay",
+       "name": "Critical essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "4-reflective-essay",
+       "name": "Reflective essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "4-philosophical-essay",
+       "name": "Philosophical essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "4-historical-essay",
+       "name": "Historical essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "4-literary-essay",
+       "name": "Literary essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "4-personal-essay",
+       "name": "Personal essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "4-academic-essay",
+       "name": "Academic essay",
+       "elements": [
+        "question/topic",
+        "thesis",
+        "arguments",
+        "evidence",
+        "counterarguments where appropriate",
+        "synthesis",
+        "conclusion",
+        "references"
+       ],
+       "genre": "essay",
+       "from_group": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 5,
+   "name": "Reports",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "5-general-report",
+       "name": "General report",
+       "elements": [
+        "Purpose",
+        "scope",
+        "methodology",
+        "findings",
+        "analysis",
+        "conclusions",
+        "recommendations",
+        "appendices"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "5-business-report",
+       "name": "Business report",
+       "elements": [
+        "Executive summary",
+        "business problem",
+        "background",
+        "methodology",
+        "findings",
+        "analysis",
+        "recommendations",
+        "financial/operational implications"
+       ],
+       "genre": "business-report"
+      },
+      {
+       "id": "5-annual-report",
+       "name": "Annual report",
+       "elements": [
+        "Organization overview",
+        "leadership commentary",
+        "activities/performance",
+        "financial information",
+        "risks",
+        "governance",
+        "outlook"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "5-progress-report",
+       "name": "Progress report",
+       "elements": [
+        "Objective",
+        "reporting period",
+        "completed work",
+        "current status",
+        "obstacles",
+        "metrics",
+        "upcoming work"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "5-investigation-report",
+       "name": "Investigation report",
+       "elements": [
+        "Mandate",
+        "allegations/issues",
+        "methodology",
+        "evidence",
+        "interviews/records",
+        "findings",
+        "conclusions"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "5-incident-report",
+       "name": "Incident report",
+       "elements": [
+        "Incident identification",
+        "time/place",
+        "involved parties",
+        "factual description",
+        "consequences",
+        "follow-up"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "5-audit-report",
+       "name": "Audit report",
+       "elements": [
+        "Scope",
+        "standards/criteria",
+        "testing",
+        "findings",
+        "exceptions",
+        "conclusions/opinion"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "5-inspection-report",
+       "name": "Inspection report",
+       "elements": [
+        "Object/site inspected",
+        "criteria",
+        "observations",
+        "deficiencies",
+        "photographs/evidence",
+        "recommendations"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "5-evaluation-report",
+       "name": "Evaluation report",
+       "elements": [
+        "Program/object evaluated",
+        "criteria",
+        "methodology",
+        "evidence",
+        "results",
+        "conclusions"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "5-feasibility-report",
+       "name": "Feasibility report",
+       "elements": [
+        "Proposal",
+        "requirements",
+        "alternatives",
+        "technical feasibility",
+        "operational feasibility",
+        "economics",
+        "risks",
+        "recommendation"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "5-after-action-report",
+       "name": "After-action report",
+       "elements": [
+        "Event/objective",
+        "intended outcome",
+        "actual outcome",
+        "successes",
+        "failures",
+        "lessons learned",
+        "corrective actions"
+       ],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 6,
+   "name": "Research, Academic & Scholarly Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "6-research-paper",
+       "name": "Research paper",
+       "elements": [
+        "Abstract",
+        "question",
+        "literature",
+        "methodology",
+        "results",
+        "discussion",
+        "conclusion",
+        "references"
+       ],
+       "genre": "research-paper"
+      },
+      {
+       "id": "6-academic-article",
+       "name": "Academic article",
+       "elements": [
+        "Abstract",
+        "introduction",
+        "discipline-specific body/methodology",
+        "findings/argument",
+        "references"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "6-thesis",
+       "name": "Thesis",
+       "elements": [
+        "Research problem",
+        "literature review",
+        "methodology",
+        "findings",
+        "analysis",
+        "conclusions",
+        "bibliography"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "6-dissertation",
+       "name": "Dissertation",
+       "elements": [
+        "Extended thesis structure with original research contribution"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "6-literature-review",
+       "name": "Literature review",
+       "elements": [
+        "Research question",
+        "search/selection framework",
+        "literature synthesis",
+        "gaps",
+        "conclusions"
+       ],
+       "genre": "literature-review"
+      },
+      {
+       "id": "6-systematic-review",
+       "name": "Systematic review",
+       "elements": [
+        "Protocol/question",
+        "eligibility criteria",
+        "search methodology",
+        "study selection",
+        "synthesis"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "6-meta-analysis",
+       "name": "Meta-analysis",
+       "elements": [
+        "Study-selection methodology",
+        "datasets",
+        "statistical combination",
+        "results",
+        "limitations"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "6-case-study",
+       "name": "Case study",
+       "elements": [
+        "Subject/problem",
+        "context",
+        "evidence",
+        "analysis",
+        "results",
+        "lessons"
+       ],
+       "genre": "case-study"
+      },
+      {
+       "id": "6-research-proposal",
+       "name": "Research proposal",
+       "elements": [
+        "Question",
+        "rationale",
+        "prior literature",
+        "proposed methodology",
+        "resources",
+        "schedule"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "6-conference-paper",
+       "name": "Conference paper",
+       "elements": [
+        "Abstract",
+        "problem",
+        "work/method",
+        "findings",
+        "conclusions"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "6-working-paper",
+       "name": "Working paper",
+       "elements": [
+        "Preliminary research",
+        "methodology/argument",
+        "findings",
+        "limitations"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "6-technical-paper",
+       "name": "Technical paper",
+       "elements": [
+        "Problem",
+        "technical theory",
+        "implementation/method",
+        "testing",
+        "results"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "6-position-paper",
+       "name": "Position paper",
+       "elements": [
+        "Issue",
+        "position",
+        "evidence",
+        "arguments",
+        "recommendations"
+       ],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 7,
+   "name": "Scientific Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "7-experimental-research-article",
+       "name": "Experimental research article",
+       "elements": [
+        "Abstract",
+        "introduction",
+        "methods",
+        "materials",
+        "results",
+        "discussion",
+        "conclusion",
+        "references",
+        "supplementary data"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "7-laboratory-report",
+       "name": "Laboratory report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-experimental-protocol",
+       "name": "Experimental protocol",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-research-protocol",
+       "name": "Research protocol",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-clinical-study-report",
+       "name": "Clinical study report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-clinical-trial-protocol",
+       "name": "Clinical-trial protocol",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-observational-study",
+       "name": "Observational study",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-cohort-study",
+       "name": "Cohort study",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-case-control-study",
+       "name": "Case-control study",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-scientific-review",
+       "name": "Scientific review",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-systematic-review",
+       "name": "Systematic review",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-meta-analysis",
+       "name": "Meta-analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-scientific-hypothesis-paper",
+       "name": "Scientific hypothesis paper",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-methods-paper",
+       "name": "Methods paper",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-dataset-paper",
+       "name": "Dataset paper",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-replication-study",
+       "name": "Replication study",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-field-study",
+       "name": "Field study",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-laboratory-notebook",
+       "name": "Laboratory notebook",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-research-notebook",
+       "name": "Research notebook",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-scientific-correspondence",
+       "name": "Scientific correspondence",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-technical-note",
+       "name": "Technical note",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-scientific-poster",
+       "name": "Scientific poster",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-conference-abstract",
+       "name": "Conference abstract",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-preprint",
+       "name": "Preprint",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-supplementary-material-document",
+       "name": "Supplementary-material document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-data-management-plan",
+       "name": "Data-management plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-statistical-analysis-plan",
+       "name": "Statistical-analysis plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-research-ethics-submission",
+       "name": "Research ethics submission",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "7-research-grant-application",
+       "name": "Research grant application",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 8,
+   "name": "Analysis Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "8-general-analysis",
+       "name": "General analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-comparative-analysis",
+       "name": "Comparative analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-quantitative-analysis",
+       "name": "Quantitative analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-qualitative-analysis",
+       "name": "Qualitative analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-statistical-analysis",
+       "name": "Statistical analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-descriptive-analysis",
+       "name": "Descriptive analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-diagnostic-analysis",
+       "name": "Diagnostic analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-predictive-analysis",
+       "name": "Predictive analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-prescriptive-analysis",
+       "name": "Prescriptive analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-causal-analysis",
+       "name": "Causal analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-scenario-analysis",
+       "name": "Scenario analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-sensitivity-analysis",
+       "name": "Sensitivity analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-trend-analysis",
+       "name": "Trend analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-gap-analysis",
+       "name": "Gap analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-root-cause-analysis",
+       "name": "Root-cause analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-cost-benefit-analysis",
+       "name": "Cost-benefit analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-risk-analysis",
+       "name": "Risk analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-impact-analysis",
+       "name": "Impact analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-policy-analysis",
+       "name": "Policy analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-competitive-analysis",
+       "name": "Competitive analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-market-analysis",
+       "name": "Market analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-industry-analysis",
+       "name": "Industry analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-technical-analysis",
+       "name": "Technical analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-strategic-analysis",
+       "name": "Strategic analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-historical-analysis",
+       "name": "Historical analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-content-analysis",
+       "name": "Content analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-discourse-analysis",
+       "name": "Discourse analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "8-sentiment-analysis",
+       "name": "Sentiment analysis",
+       "elements": [
+        "Question",
+        "objects/data",
+        "analytical framework",
+        "evidence",
+        "relationships/patterns",
+        "interpretation",
+        "findings",
+        "confidence/limitations",
+        "implications"
+       ],
+       "genre": "",
+       "from_group": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 9,
+   "name": "Comparison Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "9-side-by-side-comparison",
+       "name": "Side-by-side comparison",
+       "elements": [
+        "Objects",
+        "criteria",
+        "measurements/evidence",
+        "similarities",
+        "differences",
+        "strengths",
+        "weaknesses",
+        "tradeoffs",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "9-product-comparison",
+       "name": "Product comparison",
+       "elements": [
+        "Objects",
+        "criteria",
+        "measurements/evidence",
+        "similarities",
+        "differences",
+        "strengths",
+        "weaknesses",
+        "tradeoffs",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "9-vendor-comparison",
+       "name": "Vendor comparison",
+       "elements": [
+        "Objects",
+        "criteria",
+        "measurements/evidence",
+        "similarities",
+        "differences",
+        "strengths",
+        "weaknesses",
+        "tradeoffs",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "9-technology-comparison",
+       "name": "Technology comparison",
+       "elements": [
+        "Objects",
+        "criteria",
+        "measurements/evidence",
+        "similarities",
+        "differences",
+        "strengths",
+        "weaknesses",
+        "tradeoffs",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "9-company-comparison",
+       "name": "Company comparison",
+       "elements": [
+        "Objects",
+        "criteria",
+        "measurements/evidence",
+        "similarities",
+        "differences",
+        "strengths",
+        "weaknesses",
+        "tradeoffs",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "9-investment-comparison",
+       "name": "Investment comparison",
+       "elements": [
+        "Objects",
+        "criteria",
+        "measurements/evidence",
+        "similarities",
+        "differences",
+        "strengths",
+        "weaknesses",
+        "tradeoffs",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "9-policy-comparison",
+       "name": "Policy comparison",
+       "elements": [
+        "Objects",
+        "criteria",
+        "measurements/evidence",
+        "similarities",
+        "differences",
+        "strengths",
+        "weaknesses",
+        "tradeoffs",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "9-scientific-method-comparison",
+       "name": "Scientific-method comparison",
+       "elements": [
+        "Objects",
+        "criteria",
+        "measurements/evidence",
+        "similarities",
+        "differences",
+        "strengths",
+        "weaknesses",
+        "tradeoffs",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "9-legal-comparison",
+       "name": "Legal comparison",
+       "elements": [
+        "Objects",
+        "criteria",
+        "measurements/evidence",
+        "similarities",
+        "differences",
+        "strengths",
+        "weaknesses",
+        "tradeoffs",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "9-jurisdiction-comparison",
+       "name": "Jurisdiction comparison",
+       "elements": [
+        "Objects",
+        "criteria",
+        "measurements/evidence",
+        "similarities",
+        "differences",
+        "strengths",
+        "weaknesses",
+        "tradeoffs",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "9-historical-comparison",
+       "name": "Historical comparison",
+       "elements": [
+        "Objects",
+        "criteria",
+        "measurements/evidence",
+        "similarities",
+        "differences",
+        "strengths",
+        "weaknesses",
+        "tradeoffs",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "9-competitive-benchmarking",
+       "name": "Competitive benchmarking",
+       "elements": [
+        "Objects",
+        "criteria",
+        "measurements/evidence",
+        "similarities",
+        "differences",
+        "strengths",
+        "weaknesses",
+        "tradeoffs",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "9-feature-matrix",
+       "name": "Feature matrix",
+       "elements": [
+        "Objects",
+        "criteria",
+        "measurements/evidence",
+        "similarities",
+        "differences",
+        "strengths",
+        "weaknesses",
+        "tradeoffs",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "9-cost-comparison",
+       "name": "Cost comparison",
+       "elements": [
+        "Objects",
+        "criteria",
+        "measurements/evidence",
+        "similarities",
+        "differences",
+        "strengths",
+        "weaknesses",
+        "tradeoffs",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "9-cost-benefit-comparison",
+       "name": "Cost-benefit comparison",
+       "elements": [
+        "Objects",
+        "criteria",
+        "measurements/evidence",
+        "similarities",
+        "differences",
+        "strengths",
+        "weaknesses",
+        "tradeoffs",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 10,
+   "name": "Business Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "Strategy",
+     "types": [
+      {
+       "id": "10-business-plan",
+       "name": "Business plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-strategic-plan",
+       "name": "Strategic plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-operating-plan",
+       "name": "Operating plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-growth-plan",
+       "name": "Growth plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-expansion-plan",
+       "name": "Expansion plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-turnaround-plan",
+       "name": "Turnaround plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-go-to-market-plan",
+       "name": "Go-to-market plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-market-entry-plan",
+       "name": "Market-entry plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-digital-transformation-plan",
+       "name": "Digital-transformation plan",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    },
+    {
+     "name": "Executive communication",
+     "types": [
+      {
+       "id": "10-business-brief",
+       "name": "Business brief",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-executive-brief",
+       "name": "Executive brief",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-executive-summary",
+       "name": "Executive summary",
+       "elements": [],
+       "genre": "executive-summary"
+      },
+      {
+       "id": "10-decision-memo",
+       "name": "Decision memo",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-strategy-memo",
+       "name": "Strategy memo",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-board-memo",
+       "name": "Board memo",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-board-package",
+       "name": "Board package",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-management-report",
+       "name": "Management report",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    },
+    {
+     "name": "Operations",
+     "types": [
+      {
+       "id": "10-standard-operating-procedure",
+       "name": "Standard operating procedure",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-work-instruction",
+       "name": "Work instruction",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-process-document",
+       "name": "Process document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-policy",
+       "name": "Policy",
+       "elements": [],
+       "genre": "policy"
+      },
+      {
+       "id": "10-procedure",
+       "name": "Procedure",
+       "elements": [],
+       "genre": "procedure"
+      },
+      {
+       "id": "10-operations-manual",
+       "name": "Operations manual",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-quality-manual",
+       "name": "Quality manual",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-checklist",
+       "name": "Checklist",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-business-continuity-plan",
+       "name": "Business-continuity plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-disaster-recovery-plan",
+       "name": "Disaster-recovery plan",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    },
+    {
+     "name": "Projects",
+     "types": [
+      {
+       "id": "10-project-charter",
+       "name": "Project charter",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-project-plan",
+       "name": "Project plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-requirements-document",
+       "name": "Requirements document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-statement-of-work",
+       "name": "Statement of work",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-status-report",
+       "name": "Status report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-risk-register",
+       "name": "Risk register",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-issue-log",
+       "name": "Issue log",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-change-request",
+       "name": "Change request",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-postmortem",
+       "name": "Postmortem",
+       "elements": [],
+       "genre": "postmortem"
+      },
+      {
+       "id": "10-lessons-learned-report",
+       "name": "Lessons-learned report",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    },
+    {
+     "name": "Sales/marketing",
+     "types": [
+      {
+       "id": "10-sales-proposal",
+       "name": "Sales proposal",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-marketing-plan",
+       "name": "Marketing plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-campaign-brief",
+       "name": "Campaign brief",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-creative-brief",
+       "name": "Creative brief",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-customer-proposal",
+       "name": "Customer proposal",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-rfp",
+       "name": "RFP",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-rfq",
+       "name": "RFQ",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-rfi",
+       "name": "RFI",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-vendor-proposal",
+       "name": "Vendor proposal",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-case-study",
+       "name": "Case study",
+       "elements": [],
+       "genre": "case-study"
+      },
+      {
+       "id": "10-product-brochure",
+       "name": "Product brochure",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "10-product-sheet",
+       "name": "Product sheet",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 11,
+   "name": "Financial & Accounting Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "Financial statements",
+     "types": [
+      {
+       "id": "11-balance-sheet",
+       "name": "Balance sheet",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "11-income-statement",
+       "name": "Income statement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "11-cash-flow-statement",
+       "name": "Cash-flow statement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "11-statement-of-shareholders-equity",
+       "name": "Statement of shareholders' equity",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "11-notes-to-financial-statements",
+       "name": "Notes to financial statements",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    },
+    {
+     "name": "Financial reports",
+     "types": [
+      {
+       "id": "11-annual-financial-report",
+       "name": "Annual financial report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "11-quarterly-report",
+       "name": "Quarterly report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "11-management-accounts",
+       "name": "Management accounts",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "11-budget-report",
+       "name": "Budget report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "11-variance-report",
+       "name": "Variance report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "11-audit-report",
+       "name": "Audit report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "11-tax-report",
+       "name": "Tax report",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    },
+    {
+     "name": "Analytical finance",
+     "types": [
+      {
+       "id": "11-financial-analysis",
+       "name": "Financial analysis",
+       "elements": [
+        "period",
+        "accounts/data",
+        "assumptions",
+        "calculations",
+        "historical comparisons",
+        "ratios/KPIs",
+        "interpretation",
+        "forecast/risk"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "11-ratio-analysis",
+       "name": "Ratio analysis",
+       "elements": [
+        "period",
+        "accounts/data",
+        "assumptions",
+        "calculations",
+        "historical comparisons",
+        "ratios/KPIs",
+        "interpretation",
+        "forecast/risk"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "11-valuation-report",
+       "name": "Valuation report",
+       "elements": [
+        "period",
+        "accounts/data",
+        "assumptions",
+        "calculations",
+        "historical comparisons",
+        "ratios/KPIs",
+        "interpretation",
+        "forecast/risk"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "11-credit-analysis",
+       "name": "Credit analysis",
+       "elements": [
+        "period",
+        "accounts/data",
+        "assumptions",
+        "calculations",
+        "historical comparisons",
+        "ratios/KPIs",
+        "interpretation",
+        "forecast/risk"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "11-investment-analysis",
+       "name": "Investment analysis",
+       "elements": [
+        "period",
+        "accounts/data",
+        "assumptions",
+        "calculations",
+        "historical comparisons",
+        "ratios/KPIs",
+        "interpretation",
+        "forecast/risk"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "11-portfolio-analysis",
+       "name": "Portfolio analysis",
+       "elements": [
+        "period",
+        "accounts/data",
+        "assumptions",
+        "calculations",
+        "historical comparisons",
+        "ratios/KPIs",
+        "interpretation",
+        "forecast/risk"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "11-capital-allocation-analysis",
+       "name": "Capital-allocation analysis",
+       "elements": [
+        "period",
+        "accounts/data",
+        "assumptions",
+        "calculations",
+        "historical comparisons",
+        "ratios/KPIs",
+        "interpretation",
+        "forecast/risk"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "11-financial-forecast",
+       "name": "Financial forecast",
+       "elements": [
+        "period",
+        "accounts/data",
+        "assumptions",
+        "calculations",
+        "historical comparisons",
+        "ratios/KPIs",
+        "interpretation",
+        "forecast/risk"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "11-financial-model-documentation",
+       "name": "Financial model documentation",
+       "elements": [
+        "period",
+        "accounts/data",
+        "assumptions",
+        "calculations",
+        "historical comparisons",
+        "ratios/KPIs",
+        "interpretation",
+        "forecast/risk"
+       ],
+       "genre": "",
+       "from_group": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 12,
+   "name": "Investment, Securities & Stock-Market Documents",
+   "caution": "not investment advice",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "12-equity-research-report",
+       "name": "Equity research report",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-stock-analysis",
+       "name": "Stock analysis",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-company-analysis",
+       "name": "Company analysis",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-fundamental-analysis",
+       "name": "Fundamental analysis",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-technical-analysis",
+       "name": "Technical analysis",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-earnings-analysis",
+       "name": "Earnings analysis",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-earnings-preview",
+       "name": "Earnings preview",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-earnings-recap",
+       "name": "Earnings recap",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-investment-thesis",
+       "name": "Investment thesis",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-investment-memorandum",
+       "name": "Investment memorandum",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-portfolio-report",
+       "name": "Portfolio report",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-fund-report",
+       "name": "Fund report",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-analyst-note",
+       "name": "Analyst note",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-market-commentary",
+       "name": "Market commentary",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-economic-outlook",
+       "name": "Economic outlook",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-sector-report",
+       "name": "Sector report",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-industry-report",
+       "name": "Industry report",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-credit-research-report",
+       "name": "Credit research report",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-bond-analysis",
+       "name": "Bond analysis",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-risk-assessment",
+       "name": "Risk assessment",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-valuation-report",
+       "name": "Valuation report",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-m-a-analysis",
+       "name": "M&A analysis",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-due-diligence-report",
+       "name": "Due-diligence report",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "12-investor-presentation",
+       "name": "Investor presentation",
+       "elements": [
+        "security/company",
+        "market context",
+        "financials",
+        "catalysts",
+        "valuation",
+        "risks",
+        "scenarios",
+        "thesis/conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 13,
+   "name": "Industry & Market Intelligence",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "13-industry-analysis",
+       "name": "Industry analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-market-research-report",
+       "name": "Market research report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-market-size-report",
+       "name": "Market-size report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-competitive-intelligence-report",
+       "name": "Competitive-intelligence report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-competitor-profile",
+       "name": "Competitor profile",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-market-share-analysis",
+       "name": "Market-share analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-consumer-analysis",
+       "name": "Consumer analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-customer-segmentation-report",
+       "name": "Customer segmentation report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-demand-analysis",
+       "name": "Demand analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-supply-analysis",
+       "name": "Supply analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-pricing-analysis",
+       "name": "Pricing analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-trend-report",
+       "name": "Trend report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-forecast",
+       "name": "Forecast",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-technology-landscape",
+       "name": "Technology landscape",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-vendor-landscape",
+       "name": "Vendor landscape",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-benchmark-report",
+       "name": "Benchmark report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-swot-analysis",
+       "name": "SWOT analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-pest-pestle-analysis",
+       "name": "PEST/PESTLE analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-porter-s-five-forces-analysis",
+       "name": "Porter's Five Forces analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "13-opportunity-analysis",
+       "name": "Opportunity analysis",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 14,
+   "name": "Whitepapers & Thought Leadership",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "14-whitepaper",
+       "name": "Whitepaper",
+       "elements": [
+        "title",
+        "executive summary",
+        "problem",
+        "background",
+        "evidence",
+        "proposed approach",
+        "benefits",
+        "implementation/use cases",
+        "conclusion",
+        "references"
+       ],
+       "genre": "white-paper"
+      },
+      {
+       "id": "14-technical-whitepaper",
+       "name": "Technical whitepaper",
+       "elements": [
+        "title",
+        "executive summary",
+        "problem",
+        "background",
+        "evidence",
+        "proposed approach",
+        "benefits",
+        "implementation/use cases",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "14-business-whitepaper",
+       "name": "Business whitepaper",
+       "elements": [
+        "title",
+        "executive summary",
+        "problem",
+        "background",
+        "evidence",
+        "proposed approach",
+        "benefits",
+        "implementation/use cases",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "14-policy-whitepaper",
+       "name": "Policy whitepaper",
+       "elements": [
+        "title",
+        "executive summary",
+        "problem",
+        "background",
+        "evidence",
+        "proposed approach",
+        "benefits",
+        "implementation/use cases",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "14-scientific-whitepaper",
+       "name": "Scientific whitepaper",
+       "elements": [
+        "title",
+        "executive summary",
+        "problem",
+        "background",
+        "evidence",
+        "proposed approach",
+        "benefits",
+        "implementation/use cases",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "14-government-whitepaper",
+       "name": "Government whitepaper",
+       "elements": [
+        "title",
+        "executive summary",
+        "problem",
+        "background",
+        "evidence",
+        "proposed approach",
+        "benefits",
+        "implementation/use cases",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "14-industry-whitepaper",
+       "name": "Industry whitepaper",
+       "elements": [
+        "title",
+        "executive summary",
+        "problem",
+        "background",
+        "evidence",
+        "proposed approach",
+        "benefits",
+        "implementation/use cases",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "14-technology-whitepaper",
+       "name": "Technology whitepaper",
+       "elements": [
+        "title",
+        "executive summary",
+        "problem",
+        "background",
+        "evidence",
+        "proposed approach",
+        "benefits",
+        "implementation/use cases",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "14-product-whitepaper",
+       "name": "Product whitepaper",
+       "elements": [
+        "title",
+        "executive summary",
+        "problem",
+        "background",
+        "evidence",
+        "proposed approach",
+        "benefits",
+        "implementation/use cases",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "14-investment-whitepaper",
+       "name": "Investment whitepaper",
+       "elements": [
+        "title",
+        "executive summary",
+        "problem",
+        "background",
+        "evidence",
+        "proposed approach",
+        "benefits",
+        "implementation/use cases",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "14-standards-whitepaper",
+       "name": "Standards whitepaper",
+       "elements": [
+        "title",
+        "executive summary",
+        "problem",
+        "background",
+        "evidence",
+        "proposed approach",
+        "benefits",
+        "implementation/use cases",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "14-vision-paper",
+       "name": "Vision paper",
+       "elements": [
+        "title",
+        "executive summary",
+        "problem",
+        "background",
+        "evidence",
+        "proposed approach",
+        "benefits",
+        "implementation/use cases",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "14-concept-paper",
+       "name": "Concept paper",
+       "elements": [
+        "title",
+        "executive summary",
+        "problem",
+        "background",
+        "evidence",
+        "proposed approach",
+        "benefits",
+        "implementation/use cases",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "14-position-paper",
+       "name": "Position paper",
+       "elements": [
+        "title",
+        "executive summary",
+        "problem",
+        "background",
+        "evidence",
+        "proposed approach",
+        "benefits",
+        "implementation/use cases",
+        "conclusion",
+        "references"
+       ],
+       "genre": "",
+       "from_group": true
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 15,
+   "name": "Technology & Engineering",
+   "caution": "",
+   "families": [
+    {
+     "name": "Architecture",
+     "types": [
+      {
+       "id": "15-system-architecture-document",
+       "name": "System architecture document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-solution-architecture",
+       "name": "Solution architecture",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-enterprise-architecture",
+       "name": "Enterprise architecture",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-software-architecture-document",
+       "name": "Software architecture document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-network-architecture",
+       "name": "Network architecture",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-data-architecture",
+       "name": "Data architecture",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-cloud-architecture",
+       "name": "Cloud architecture",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-security-architecture",
+       "name": "Security architecture",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-ai-system-architecture",
+       "name": "AI-system architecture",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    },
+    {
+     "name": "Specifications",
+     "types": [
+      {
+       "id": "15-technical-specification",
+       "name": "Technical specification",
+       "elements": [
+        "scope",
+        "terminology",
+        "requirements",
+        "architecture",
+        "components",
+        "interfaces",
+        "data",
+        "behavior",
+        "constraints",
+        "performance",
+        "security",
+        "testing",
+        "acceptance criteria"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "15-functional-specification",
+       "name": "Functional specification",
+       "elements": [
+        "scope",
+        "terminology",
+        "requirements",
+        "architecture",
+        "components",
+        "interfaces",
+        "data",
+        "behavior",
+        "constraints",
+        "performance",
+        "security",
+        "testing",
+        "acceptance criteria"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "15-product-specification",
+       "name": "Product specification",
+       "elements": [
+        "scope",
+        "terminology",
+        "requirements",
+        "architecture",
+        "components",
+        "interfaces",
+        "data",
+        "behavior",
+        "constraints",
+        "performance",
+        "security",
+        "testing",
+        "acceptance criteria"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "15-design-specification",
+       "name": "Design specification",
+       "elements": [
+        "scope",
+        "terminology",
+        "requirements",
+        "architecture",
+        "components",
+        "interfaces",
+        "data",
+        "behavior",
+        "constraints",
+        "performance",
+        "security",
+        "testing",
+        "acceptance criteria"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "15-engineering-specification",
+       "name": "Engineering specification",
+       "elements": [
+        "scope",
+        "terminology",
+        "requirements",
+        "architecture",
+        "components",
+        "interfaces",
+        "data",
+        "behavior",
+        "constraints",
+        "performance",
+        "security",
+        "testing",
+        "acceptance criteria"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "15-interface-specification",
+       "name": "Interface specification",
+       "elements": [
+        "scope",
+        "terminology",
+        "requirements",
+        "architecture",
+        "components",
+        "interfaces",
+        "data",
+        "behavior",
+        "constraints",
+        "performance",
+        "security",
+        "testing",
+        "acceptance criteria"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "15-api-specification",
+       "name": "API specification",
+       "elements": [
+        "scope",
+        "terminology",
+        "requirements",
+        "architecture",
+        "components",
+        "interfaces",
+        "data",
+        "behavior",
+        "constraints",
+        "performance",
+        "security",
+        "testing",
+        "acceptance criteria"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "15-protocol-specification",
+       "name": "Protocol specification",
+       "elements": [
+        "scope",
+        "terminology",
+        "requirements",
+        "architecture",
+        "components",
+        "interfaces",
+        "data",
+        "behavior",
+        "constraints",
+        "performance",
+        "security",
+        "testing",
+        "acceptance criteria"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "15-data-specification",
+       "name": "Data specification",
+       "elements": [
+        "scope",
+        "terminology",
+        "requirements",
+        "architecture",
+        "components",
+        "interfaces",
+        "data",
+        "behavior",
+        "constraints",
+        "performance",
+        "security",
+        "testing",
+        "acceptance criteria"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "15-hardware-specification",
+       "name": "Hardware specification",
+       "elements": [
+        "scope",
+        "terminology",
+        "requirements",
+        "architecture",
+        "components",
+        "interfaces",
+        "data",
+        "behavior",
+        "constraints",
+        "performance",
+        "security",
+        "testing",
+        "acceptance criteria"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "15-software-requirements-specification",
+       "name": "Software requirements specification",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-product-requirements-document",
+       "name": "Product requirements document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-system-requirements-document",
+       "name": "System requirements document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-engineering-drawing-package",
+       "name": "Engineering drawing package",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-design-document",
+       "name": "Design document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-api-documentation",
+       "name": "API documentation",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-user-documentation",
+       "name": "User documentation",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-developer-documentation",
+       "name": "Developer documentation",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-installation-guide",
+       "name": "Installation guide",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-configuration-guide",
+       "name": "Configuration guide",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-maintenance-manual",
+       "name": "Maintenance manual",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-troubleshooting-guide",
+       "name": "Troubleshooting guide",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-release-notes",
+       "name": "Release notes",
+       "elements": [],
+       "genre": "release-notes"
+      },
+      {
+       "id": "15-change-log",
+       "name": "Change log",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-test-plan",
+       "name": "Test plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-test-case",
+       "name": "Test case",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-test-report",
+       "name": "Test report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-verification-report",
+       "name": "Verification report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-validation-report",
+       "name": "Validation report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-failure-analysis",
+       "name": "Failure analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "15-root-cause-report",
+       "name": "Root-cause report",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 16,
+   "name": "Patents & Intellectual Property",
+   "caution": "a draft for a registered patent attorney or agent",
+   "families": [
+    {
+     "name": "Patent-family documents",
+     "types": [
+      {
+       "id": "16-invention-disclosure",
+       "name": "Invention disclosure",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-prior-art-search-report",
+       "name": "Prior-art search report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-patentability-analysis",
+       "name": "Patentability analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-provisional-patent-application",
+       "name": "Provisional patent application",
+       "elements": [
+        "title",
+        "inventor information",
+        "technical field",
+        "background/problem",
+        "invention overview",
+        "detailed description",
+        "alternative embodiments",
+        "examples",
+        "drawings/figures",
+        "supporting technical material"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "16-nonprovisional-utility-application",
+       "name": "Nonprovisional utility application",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-design-patent-application",
+       "name": "Design patent application",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-plant-patent-application",
+       "name": "Plant patent application",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-international-pct-application",
+       "name": "International/PCT application",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-continuation-application",
+       "name": "Continuation application",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-divisional-application",
+       "name": "Divisional application",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-specification",
+       "name": "Specification",
+       "elements": [],
+       "genre": "specification"
+      },
+      {
+       "id": "16-abstract",
+       "name": "Abstract",
+       "elements": [],
+       "genre": "abstract"
+      },
+      {
+       "id": "16-claims",
+       "name": "Claims",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-drawings",
+       "name": "Drawings",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-information-disclosure-materials",
+       "name": "Information disclosure materials",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-office-action-response",
+       "name": "Office-action response",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-amendment",
+       "name": "Amendment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-appeal-materials",
+       "name": "Appeal materials",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-patent-opinion",
+       "name": "Patent opinion",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-freedom-to-operate-analysis",
+       "name": "Freedom-to-operate analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-infringement-analysis",
+       "name": "Infringement analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "16-validity-analysis",
+       "name": "Validity analysis",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 17,
+   "name": "Legal Documents",
+   "caution": "a draft for a qualified lawyer, not legal advice",
+   "families": [
+    {
+     "name": "Court pleadings",
+     "types": [
+      {
+       "id": "17-complaint",
+       "name": "Complaint",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-petition",
+       "name": "Petition",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-answer",
+       "name": "Answer",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-counterclaim",
+       "name": "Counterclaim",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-cross-claim",
+       "name": "Cross-claim",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-third-party-complaint",
+       "name": "Third-party complaint",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-reply",
+       "name": "Reply",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    },
+    {
+     "name": "Motions",
+     "types": [
+      {
+       "id": "17-motion",
+       "name": "Motion",
+       "elements": [
+        "court",
+        "caption",
+        "parties",
+        "case number",
+        "title",
+        "requested relief",
+        "facts",
+        "legal grounds",
+        "argument",
+        "conclusion/prayer",
+        "signature",
+        "service information"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "17-motion-to-dismiss",
+       "name": "Motion to dismiss",
+       "elements": [
+        "court",
+        "caption",
+        "parties",
+        "case number",
+        "title",
+        "requested relief",
+        "facts",
+        "legal grounds",
+        "argument",
+        "conclusion/prayer",
+        "signature",
+        "service information"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "17-motion-for-summary-judgment",
+       "name": "Motion for summary judgment",
+       "elements": [
+        "court",
+        "caption",
+        "parties",
+        "case number",
+        "title",
+        "requested relief",
+        "facts",
+        "legal grounds",
+        "argument",
+        "conclusion/prayer",
+        "signature",
+        "service information"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "17-motion-to-compel",
+       "name": "Motion to compel",
+       "elements": [
+        "court",
+        "caption",
+        "parties",
+        "case number",
+        "title",
+        "requested relief",
+        "facts",
+        "legal grounds",
+        "argument",
+        "conclusion/prayer",
+        "signature",
+        "service information"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "17-motion-in-limine",
+       "name": "Motion in limine",
+       "elements": [
+        "court",
+        "caption",
+        "parties",
+        "case number",
+        "title",
+        "requested relief",
+        "facts",
+        "legal grounds",
+        "argument",
+        "conclusion/prayer",
+        "signature",
+        "service information"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "17-motion-for-reconsideration",
+       "name": "Motion for reconsideration",
+       "elements": [
+        "court",
+        "caption",
+        "parties",
+        "case number",
+        "title",
+        "requested relief",
+        "facts",
+        "legal grounds",
+        "argument",
+        "conclusion/prayer",
+        "signature",
+        "service information"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "17-emergency-motion",
+       "name": "Emergency motion",
+       "elements": [
+        "court",
+        "caption",
+        "parties",
+        "case number",
+        "title",
+        "requested relief",
+        "facts",
+        "legal grounds",
+        "argument",
+        "conclusion/prayer",
+        "signature",
+        "service information"
+       ],
+       "genre": "",
+       "from_group": true
+      }
+     ]
+    },
+    {
+     "name": "Briefs",
+     "types": [
+      {
+       "id": "17-trial-brief",
+       "name": "Trial brief",
+       "elements": [
+        "caption",
+        "questions/issues",
+        "procedural/factual background",
+        "applicable standard",
+        "argument",
+        "authorities",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "17-appellate-brief",
+       "name": "Appellate brief",
+       "elements": [
+        "caption",
+        "questions/issues",
+        "procedural/factual background",
+        "applicable standard",
+        "argument",
+        "authorities",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "17-opening-brief",
+       "name": "Opening brief",
+       "elements": [
+        "caption",
+        "questions/issues",
+        "procedural/factual background",
+        "applicable standard",
+        "argument",
+        "authorities",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "17-answering-brief",
+       "name": "Answering brief",
+       "elements": [
+        "caption",
+        "questions/issues",
+        "procedural/factual background",
+        "applicable standard",
+        "argument",
+        "authorities",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "17-reply-brief",
+       "name": "Reply brief",
+       "elements": [
+        "caption",
+        "questions/issues",
+        "procedural/factual background",
+        "applicable standard",
+        "argument",
+        "authorities",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "17-amicus-brief",
+       "name": "Amicus brief",
+       "elements": [
+        "caption",
+        "questions/issues",
+        "procedural/factual background",
+        "applicable standard",
+        "argument",
+        "authorities",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "17-memorandum-of-points-and-authorities",
+       "name": "Memorandum of points and authorities",
+       "elements": [
+        "caption",
+        "questions/issues",
+        "procedural/factual background",
+        "applicable standard",
+        "argument",
+        "authorities",
+        "conclusion"
+       ],
+       "genre": "",
+       "from_group": true
+      }
+     ]
+    },
+    {
+     "name": "Evidence/discovery",
+     "types": [
+      {
+       "id": "17-interrogatories",
+       "name": "Interrogatories",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-requests-for-admission",
+       "name": "Requests for admission",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-requests-for-production",
+       "name": "Requests for production",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-discovery-responses",
+       "name": "Discovery responses",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-deposition-transcript",
+       "name": "Deposition transcript",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-deposition-notice",
+       "name": "Deposition notice",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-subpoena",
+       "name": "Subpoena",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-declaration",
+       "name": "Declaration",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-affidavit",
+       "name": "Affidavit",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-exhibit",
+       "name": "Exhibit",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-expert-report",
+       "name": "Expert report",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    },
+    {
+     "name": "Judicial documents",
+     "types": [
+      {
+       "id": "17-order",
+       "name": "Order",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-judgment",
+       "name": "Judgment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-opinion",
+       "name": "Opinion",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-decision",
+       "name": "Decision",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-findings-of-fact",
+       "name": "Findings of fact",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-conclusions-of-law",
+       "name": "Conclusions of law",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-writ",
+       "name": "Writ",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-injunction",
+       "name": "Injunction",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    },
+    {
+     "name": "Transactional law",
+     "types": [
+      {
+       "id": "17-contract",
+       "name": "Contract",
+       "elements": [],
+       "genre": "contract"
+      },
+      {
+       "id": "17-agreement",
+       "name": "Agreement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-amendment",
+       "name": "Amendment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-addendum",
+       "name": "Addendum",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-memorandum-of-understanding",
+       "name": "Memorandum of understanding",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-letter-of-intent",
+       "name": "Letter of intent",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-nda",
+       "name": "NDA",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-license-agreement",
+       "name": "License agreement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-employment-agreement",
+       "name": "Employment agreement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-partnership-agreement",
+       "name": "Partnership agreement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-operating-agreement",
+       "name": "Operating agreement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-shareholders-agreement",
+       "name": "Shareholders agreement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-asset-purchase-agreement",
+       "name": "Asset-purchase agreement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-stock-purchase-agreement",
+       "name": "Stock-purchase agreement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-merger-agreement",
+       "name": "Merger agreement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-loan-agreement",
+       "name": "Loan agreement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-promissory-note",
+       "name": "Promissory note",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-security-agreement",
+       "name": "Security agreement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-guarantee",
+       "name": "Guarantee",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-lease",
+       "name": "Lease",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-deed",
+       "name": "Deed",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-easement",
+       "name": "Easement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-assignment",
+       "name": "Assignment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-release",
+       "name": "Release",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-settlement-agreement",
+       "name": "Settlement agreement",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    },
+    {
+     "name": "Estate law",
+     "types": [
+      {
+       "id": "17-will",
+       "name": "Will",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-trust",
+       "name": "Trust",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-codicil",
+       "name": "Codicil",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-power-of-attorney",
+       "name": "Power of attorney",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-advance-directive",
+       "name": "Advance directive",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "17-probate-petition",
+       "name": "Probate petition",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 18,
+   "name": "Government & Public Policy",
+   "caution": "",
+   "families": [
+    {
+     "name": "Legislation",
+     "types": [
+      {
+       "id": "18-bill",
+       "name": "Bill",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-act-statute",
+       "name": "Act/statute",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-regulation",
+       "name": "Regulation",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-rule",
+       "name": "Rule",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-ordinance",
+       "name": "Ordinance",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-resolution",
+       "name": "Resolution",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-executive-order",
+       "name": "Executive order",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-administrative-order",
+       "name": "Administrative order",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-government-notice",
+       "name": "Government notice",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-regulatory-guidance",
+       "name": "Regulatory guidance",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-policy-document",
+       "name": "Policy document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-policy-brief",
+       "name": "Policy brief",
+       "elements": [],
+       "genre": "policy-brief"
+      },
+      {
+       "id": "18-policy-paper",
+       "name": "Policy paper",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-policy-analysis",
+       "name": "Policy analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-impact-assessment",
+       "name": "Impact assessment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-regulatory-impact-analysis",
+       "name": "Regulatory-impact analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-government-report",
+       "name": "Government report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-commission-report",
+       "name": "Commission report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-congressional-parliamentary-report",
+       "name": "Congressional/parliamentary report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-hearing-transcript",
+       "name": "Hearing transcript",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-government-budget",
+       "name": "Government budget",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-public-consultation",
+       "name": "Public consultation",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-public-comment",
+       "name": "Public comment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-agency-decision",
+       "name": "Agency decision",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-permit",
+       "name": "Permit",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-license",
+       "name": "License",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-application",
+       "name": "Application",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "18-government-form",
+       "name": "Government form",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 19,
+   "name": "Political Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "19-political-analysis",
+       "name": "Political analysis",
+       "elements": [
+        "issue/event",
+        "actors",
+        "institutions",
+        "history",
+        "evidence/data",
+        "competing explanations",
+        "incentives",
+        "likely implications",
+        "limitations"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "19-political-commentary",
+       "name": "Political commentary",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "19-political-platform",
+       "name": "Political platform",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "19-manifesto",
+       "name": "Manifesto",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "19-campaign-platform",
+       "name": "Campaign platform",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "19-campaign-brief",
+       "name": "Campaign brief",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "19-candidate-profile",
+       "name": "Candidate profile",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "19-opposition-research-report",
+       "name": "Opposition research report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "19-legislative-analysis",
+       "name": "Legislative analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "19-election-analysis",
+       "name": "Election analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "19-poll-analysis",
+       "name": "Poll analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "19-public-opinion-report",
+       "name": "Public-opinion report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "19-political-risk-analysis",
+       "name": "Political-risk analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "19-geopolitical-analysis",
+       "name": "Geopolitical analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "19-foreign-policy-analysis",
+       "name": "Foreign-policy analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "19-speech",
+       "name": "Speech",
+       "elements": [],
+       "genre": "speech"
+      },
+      {
+       "id": "19-debate-transcript",
+       "name": "Debate transcript",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "19-policy-statement",
+       "name": "Policy statement",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 20,
+   "name": "Social-Science Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "20-empirical-research-paper",
+       "name": "Empirical research paper",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-ethnography",
+       "name": "Ethnography",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-field-study",
+       "name": "Field study",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-case-study",
+       "name": "Case study",
+       "elements": [],
+       "genre": "case-study"
+      },
+      {
+       "id": "20-behavioral-study",
+       "name": "Behavioral study",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-longitudinal-study",
+       "name": "Longitudinal study",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-cross-sectional-study",
+       "name": "Cross-sectional study",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-survey-research",
+       "name": "Survey research",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-interview-study",
+       "name": "Interview study",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-focus-group-report",
+       "name": "Focus-group report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-demographic-analysis",
+       "name": "Demographic analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-social-impact-assessment",
+       "name": "Social-impact assessment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-program-evaluation",
+       "name": "Program evaluation",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-economic-study",
+       "name": "Economic study",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-sociological-analysis",
+       "name": "Sociological analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-psychological-study",
+       "name": "Psychological study",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-content-analysis",
+       "name": "Content analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-qualitative-study",
+       "name": "Qualitative study",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-quantitative-study",
+       "name": "Quantitative study",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "20-mixed-methods-study",
+       "name": "Mixed-methods study",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 21,
+   "name": "Surveys & Opinion Research",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "21-survey-instrument",
+       "name": "Survey instrument",
+       "elements": [
+        "title",
+        "purpose",
+        "instructions",
+        "screening questions",
+        "demographic questions",
+        "substantive questions",
+        "scales/options",
+        "branching logic",
+        "closing"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "21-survey-research-report",
+       "name": "Survey research report",
+       "elements": [
+        "research question",
+        "population",
+        "sampling",
+        "instrument",
+        "collection method",
+        "response information",
+        "results",
+        "cross-tabs/statistics",
+        "limitations",
+        "conclusions"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "21-questionnaire",
+       "name": "Questionnaire",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "21-poll",
+       "name": "Poll",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "21-census-questionnaire",
+       "name": "Census questionnaire",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "21-customer-satisfaction-survey",
+       "name": "Customer-satisfaction survey",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "21-employee-survey",
+       "name": "Employee survey",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "21-market-research-survey",
+       "name": "Market-research survey",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "21-political-poll",
+       "name": "Political poll",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "21-exit-poll",
+       "name": "Exit poll",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "21-academic-survey",
+       "name": "Academic survey",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "21-interview-questionnaire",
+       "name": "Interview questionnaire",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "21-focus-group-discussion-guide",
+       "name": "Focus-group discussion guide",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 22,
+   "name": "Medical & Healthcare Documents",
+   "caution": "not medical advice; for review by a qualified clinician",
+   "families": [
+    {
+     "name": "Patient/clinical",
+     "types": [
+      {
+       "id": "22-medical-record",
+       "name": "Medical record",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-history-and-physical",
+       "name": "History and physical",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-progress-note",
+       "name": "Progress note",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-consultation-note",
+       "name": "Consultation note",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-operative-report",
+       "name": "Operative report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-discharge-summary",
+       "name": "Discharge summary",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-nursing-note",
+       "name": "Nursing note",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-therapy-note",
+       "name": "Therapy note",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-diagnostic-report",
+       "name": "Diagnostic report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-radiology-report",
+       "name": "Radiology report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-pathology-report",
+       "name": "Pathology report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-laboratory-report",
+       "name": "Laboratory report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-medication-record",
+       "name": "Medication record",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-treatment-plan",
+       "name": "Treatment plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-care-plan",
+       "name": "Care plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-referral",
+       "name": "Referral",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-prescription",
+       "name": "Prescription",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    },
+    {
+     "name": "Healthcare research/administration",
+     "types": [
+      {
+       "id": "22-clinical-guideline",
+       "name": "Clinical guideline",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-clinical-protocol",
+       "name": "Clinical protocol",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-clinical-trial-report",
+       "name": "Clinical trial report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-drug-monograph",
+       "name": "Drug monograph",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-safety-report",
+       "name": "Safety report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-medical-review",
+       "name": "Medical review",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-medical-case-report",
+       "name": "Medical case report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-health-technology-assessment",
+       "name": "Health-technology assessment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-public-health-report",
+       "name": "Public-health report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-epidemiological-report",
+       "name": "Epidemiological report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-insurance-claim",
+       "name": "Insurance claim",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-explanation-of-benefits",
+       "name": "Explanation of benefits",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "22-prior-authorization-document",
+       "name": "Prior-authorization document",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 23,
+   "name": "Education Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "23-lesson-plan",
+       "name": "Lesson plan",
+       "elements": [],
+       "genre": "lesson-plan"
+      },
+      {
+       "id": "23-curriculum",
+       "name": "Curriculum",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-syllabus",
+       "name": "Syllabus",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-course-outline",
+       "name": "Course outline",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-lecture-notes",
+       "name": "Lecture notes",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-study-guide",
+       "name": "Study guide",
+       "elements": [],
+       "genre": "study-guide"
+      },
+      {
+       "id": "23-tutorial",
+       "name": "Tutorial",
+       "elements": [],
+       "genre": "tutorial"
+      },
+      {
+       "id": "23-assignment",
+       "name": "Assignment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-worksheet",
+       "name": "Worksheet",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-examination",
+       "name": "Examination",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-quiz",
+       "name": "Quiz",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-answer-key",
+       "name": "Answer key",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-rubric",
+       "name": "Rubric",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-student-paper",
+       "name": "Student paper",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-research-project",
+       "name": "Research project",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-lab-assignment",
+       "name": "Lab assignment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-book-report",
+       "name": "Book report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-assessment-report",
+       "name": "Assessment report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-transcript",
+       "name": "Transcript",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-diploma",
+       "name": "Diploma",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-certificate",
+       "name": "Certificate",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "23-recommendation-letter",
+       "name": "Recommendation letter",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 24,
+   "name": "Screen, Stage & Entertainment Writing",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "24-screenplay",
+       "name": "Screenplay",
+       "elements": [
+        "title page",
+        "scene headings",
+        "action",
+        "characters",
+        "dialogue",
+        "parentheticals",
+        "transitions"
+       ],
+       "genre": "script"
+      },
+      {
+       "id": "24-feature-screenplay",
+       "name": "Feature screenplay",
+       "elements": [
+        "title page",
+        "scene headings",
+        "action",
+        "characters",
+        "dialogue",
+        "parentheticals",
+        "transitions"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "24-television-screenplay",
+       "name": "Television screenplay",
+       "elements": [
+        "title page",
+        "scene headings",
+        "action",
+        "characters",
+        "dialogue",
+        "parentheticals",
+        "transitions"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "24-episode-script",
+       "name": "Episode script",
+       "elements": [
+        "title page",
+        "scene headings",
+        "action",
+        "characters",
+        "dialogue",
+        "parentheticals",
+        "transitions"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "24-pilot",
+       "name": "Pilot",
+       "elements": [
+        "title page",
+        "scene headings",
+        "action",
+        "characters",
+        "dialogue",
+        "parentheticals",
+        "transitions"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "24-short-film-script",
+       "name": "Short-film script",
+       "elements": [
+        "title page",
+        "scene headings",
+        "action",
+        "characters",
+        "dialogue",
+        "parentheticals",
+        "transitions"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "24-documentary-script",
+       "name": "Documentary script",
+       "elements": [
+        "title page",
+        "scene headings",
+        "action",
+        "characters",
+        "dialogue",
+        "parentheticals",
+        "transitions"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "24-animation-script",
+       "name": "Animation script",
+       "elements": [
+        "title page",
+        "scene headings",
+        "action",
+        "characters",
+        "dialogue",
+        "parentheticals",
+        "transitions"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "24-commercial-script",
+       "name": "Commercial script",
+       "elements": [
+        "title page",
+        "scene headings",
+        "action",
+        "characters",
+        "dialogue",
+        "parentheticals",
+        "transitions"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "24-web-video-script",
+       "name": "Web-video script",
+       "elements": [
+        "title page",
+        "scene headings",
+        "action",
+        "characters",
+        "dialogue",
+        "parentheticals",
+        "transitions"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "24-youtube-script",
+       "name": "YouTube script",
+       "elements": [
+        "title page",
+        "scene headings",
+        "action",
+        "characters",
+        "dialogue",
+        "parentheticals",
+        "transitions"
+       ],
+       "genre": "",
+       "from_group": true
+      },
+      {
+       "id": "24-treatment",
+       "name": "Treatment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "24-synopsis",
+       "name": "Synopsis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "24-logline",
+       "name": "Logline",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "24-story-bible",
+       "name": "Story bible",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "24-series-bible",
+       "name": "Series bible",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "24-character-bible",
+       "name": "Character bible",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "24-episode-outline",
+       "name": "Episode outline",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "24-beat-sheet",
+       "name": "Beat sheet",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "24-scene-breakdown",
+       "name": "Scene breakdown",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "24-storyboard-specification",
+       "name": "Storyboard specification",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "24-shooting-script",
+       "name": "Shooting script",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "24-shot-list",
+       "name": "Shot list",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "24-call-sheet",
+       "name": "Call sheet",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "24-production-schedule",
+       "name": "Production schedule",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "24-production-report",
+       "name": "Production report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "24-continuity-report",
+       "name": "Continuity report",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 25,
+   "name": "Investor & Fundraising Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "25-investor-pitch-deck-document",
+       "name": "Investor pitch deck/document",
+       "elements": [
+        "company",
+        "problem",
+        "solution",
+        "technology/product",
+        "market",
+        "competition",
+        "advantage",
+        "business model",
+        "traction",
+        "go-to-market",
+        "team",
+        "financials",
+        "funding request",
+        "use of funds",
+        "milestones"
+       ],
+       "genre": ""
+      },
+      {
+       "id": "25-investor-brief",
+       "name": "Investor brief",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "25-executive-investor-summary",
+       "name": "Executive investor summary",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "25-investment-memorandum",
+       "name": "Investment memorandum",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "25-private-placement-memorandum",
+       "name": "Private-placement memorandum",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "25-investor-update",
+       "name": "Investor update",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "25-shareholder-letter",
+       "name": "Shareholder letter",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "25-funding-proposal",
+       "name": "Funding proposal",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "25-capital-plan",
+       "name": "Capital plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "25-financial-projections",
+       "name": "Financial projections",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "25-business-valuation",
+       "name": "Business valuation",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "25-due-diligence-package",
+       "name": "Due-diligence package",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "25-data-room-index",
+       "name": "Data-room index",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "25-term-sheet",
+       "name": "Term sheet",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "25-cap-table-report",
+       "name": "Cap-table report",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 26,
+   "name": "Sales, Procurement & Commercial Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "26-quote",
+       "name": "Quote",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-estimate",
+       "name": "Estimate",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-proposal",
+       "name": "Proposal",
+       "elements": [],
+       "genre": "proposal"
+      },
+      {
+       "id": "26-bid",
+       "name": "Bid",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-tender",
+       "name": "Tender",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-rfp",
+       "name": "RFP",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-rfq",
+       "name": "RFQ",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-rfi",
+       "name": "RFI",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-purchase-order",
+       "name": "Purchase order",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-sales-order",
+       "name": "Sales order",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-invoice",
+       "name": "Invoice",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-receipt",
+       "name": "Receipt",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-statement",
+       "name": "Statement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-bill-of-materials",
+       "name": "Bill of materials",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-vendor-assessment",
+       "name": "Vendor assessment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-procurement-report",
+       "name": "Procurement report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-product-catalog",
+       "name": "Product catalog",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-price-list",
+       "name": "Price list",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-service-level-agreement",
+       "name": "Service-level agreement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "26-statement-of-work",
+       "name": "Statement of work",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 27,
+   "name": "Corporate Governance",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "27-articles-of-incorporation",
+       "name": "Articles of incorporation",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "27-bylaws",
+       "name": "Bylaws",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "27-operating-agreement",
+       "name": "Operating agreement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "27-corporate-resolution",
+       "name": "Corporate resolution",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "27-board-resolution",
+       "name": "Board resolution",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "27-board-minutes",
+       "name": "Board minutes",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "27-committee-minutes",
+       "name": "Committee minutes",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "27-shareholder-resolution",
+       "name": "Shareholder resolution",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "27-corporate-policy",
+       "name": "Corporate policy",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "27-code-of-conduct",
+       "name": "Code of conduct",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "27-ethics-policy",
+       "name": "Ethics policy",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "27-governance-charter",
+       "name": "Governance charter",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "27-compliance-report",
+       "name": "Compliance report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "27-risk-report",
+       "name": "Risk report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "27-internal-control-documentation",
+       "name": "Internal-control documentation",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "27-corporate-record",
+       "name": "Corporate record",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 28,
+   "name": "Human Resources",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "28-job-description",
+       "name": "Job description",
+       "elements": [],
+       "genre": "job-description"
+      },
+      {
+       "id": "28-job-posting",
+       "name": "Job posting",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "28-resume-cv",
+       "name": "Resume/CV",
+       "elements": [],
+       "genre": "resume"
+      },
+      {
+       "id": "28-cover-letter",
+       "name": "Cover letter",
+       "elements": [],
+       "genre": "cover-letter"
+      },
+      {
+       "id": "28-employment-application",
+       "name": "Employment application",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "28-offer-letter",
+       "name": "Offer letter",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "28-employment-agreement",
+       "name": "Employment agreement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "28-employee-handbook",
+       "name": "Employee handbook",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "28-hr-policy",
+       "name": "HR policy",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "28-performance-review",
+       "name": "Performance review",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "28-performance-improvement-plan",
+       "name": "Performance-improvement plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "28-training-document",
+       "name": "Training document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "28-compensation-report",
+       "name": "Compensation report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "28-benefits-document",
+       "name": "Benefits document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "28-disciplinary-notice",
+       "name": "Disciplinary notice",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "28-termination-documentation",
+       "name": "Termination documentation",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "28-organizational-chart",
+       "name": "Organizational chart",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "28-workforce-analysis",
+       "name": "Workforce analysis",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 29,
+   "name": "Insurance",
+   "caution": "a draft for a licensed insurance professional",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "29-insurance-policy",
+       "name": "Insurance policy",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "29-binder",
+       "name": "Binder",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "29-certificate-of-insurance",
+       "name": "Certificate of insurance",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "29-endorsement",
+       "name": "Endorsement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "29-claim",
+       "name": "Claim",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "29-claim-report",
+       "name": "Claim report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "29-loss-notice",
+       "name": "Loss notice",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "29-adjuster-report",
+       "name": "Adjuster report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "29-underwriting-report",
+       "name": "Underwriting report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "29-risk-assessment",
+       "name": "Risk assessment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "29-actuarial-report",
+       "name": "Actuarial report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "29-coverage-analysis",
+       "name": "Coverage analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "29-settlement-documentation",
+       "name": "Settlement documentation",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 30,
+   "name": "Real Estate & Construction",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "30-property-listing",
+       "name": "Property listing",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-appraisal",
+       "name": "Appraisal",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-purchase-agreement",
+       "name": "Purchase agreement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-lease",
+       "name": "Lease",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-deed",
+       "name": "Deed",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-title-report",
+       "name": "Title report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-inspection-report",
+       "name": "Inspection report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-survey",
+       "name": "Survey",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-property-condition-report",
+       "name": "Property-condition report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-environmental-assessment",
+       "name": "Environmental assessment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-development-proposal",
+       "name": "Development proposal",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-architectural-specification",
+       "name": "Architectural specification",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-construction-plan",
+       "name": "Construction plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-blueprint-drawing",
+       "name": "Blueprint/drawing",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-construction-estimate",
+       "name": "Construction estimate",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-bid",
+       "name": "Bid",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-change-order",
+       "name": "Change order",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-daily-construction-report",
+       "name": "Daily construction report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "30-punch-list",
+       "name": "Punch list",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 31,
+   "name": "Manufacturing & Industrial",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "31-product-specification",
+       "name": "Product specification",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "31-manufacturing-specification",
+       "name": "Manufacturing specification",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "31-bill-of-materials",
+       "name": "Bill of materials",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "31-work-order",
+       "name": "Work order",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "31-assembly-instruction",
+       "name": "Assembly instruction",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "31-process-sheet",
+       "name": "Process sheet",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "31-quality-control-report",
+       "name": "Quality-control report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "31-inspection-report",
+       "name": "Inspection report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "31-nonconformance-report",
+       "name": "Nonconformance report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "31-corrective-action-report",
+       "name": "Corrective-action report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "31-preventive-action-report",
+       "name": "Preventive-action report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "31-safety-procedure",
+       "name": "Safety procedure",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "31-equipment-manual",
+       "name": "Equipment manual",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "31-maintenance-log",
+       "name": "Maintenance log",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "31-production-report",
+       "name": "Production report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "31-supply-chain-report",
+       "name": "Supply-chain report",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 32,
+   "name": "Transportation, Logistics & Aviation",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "32-shipping-manifest",
+       "name": "Shipping manifest",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "32-bill-of-lading",
+       "name": "Bill of lading",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "32-packing-list",
+       "name": "Packing list",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "32-customs-declaration",
+       "name": "Customs declaration",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "32-freight-invoice",
+       "name": "Freight invoice",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "32-delivery-receipt",
+       "name": "Delivery receipt",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "32-route-plan",
+       "name": "Route plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "32-fleet-report",
+       "name": "Fleet report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "32-maintenance-record",
+       "name": "Maintenance record",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "32-vehicle-inspection",
+       "name": "Vehicle inspection",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "32-flight-plan",
+       "name": "Flight plan",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "32-aircraft-log",
+       "name": "Aircraft log",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "32-maintenance-manual",
+       "name": "Maintenance manual",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "32-safety-report",
+       "name": "Safety report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "32-accident-incident-report",
+       "name": "Accident/incident report",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 33,
+   "name": "Environmental & Energy",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "33-environmental-impact-assessment",
+       "name": "Environmental-impact assessment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "33-environmental-impact-statement",
+       "name": "Environmental-impact statement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "33-sustainability-report",
+       "name": "Sustainability report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "33-esg-report",
+       "name": "ESG report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "33-environmental-audit",
+       "name": "Environmental audit",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "33-climate-risk-report",
+       "name": "Climate-risk report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "33-emissions-report",
+       "name": "Emissions report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "33-energy-audit",
+       "name": "Energy audit",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "33-geological-report",
+       "name": "Geological report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "33-resource-assessment",
+       "name": "Resource assessment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "33-environmental-permit",
+       "name": "Environmental permit",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "33-conservation-plan",
+       "name": "Conservation plan",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 34,
+   "name": "Communications & Correspondence",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "34-letter",
+       "name": "Letter",
+       "elements": [],
+       "genre": "letter"
+      },
+      {
+       "id": "34-formal-letter",
+       "name": "Formal letter",
+       "elements": [],
+       "genre": "letter"
+      },
+      {
+       "id": "34-personal-letter",
+       "name": "Personal letter",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "34-business-letter",
+       "name": "Business letter",
+       "elements": [],
+       "genre": "letter"
+      },
+      {
+       "id": "34-email",
+       "name": "Email",
+       "elements": [],
+       "genre": "email"
+      },
+      {
+       "id": "34-memo",
+       "name": "Memo",
+       "elements": [],
+       "genre": "memo"
+      },
+      {
+       "id": "34-memorandum",
+       "name": "Memorandum",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "34-circular",
+       "name": "Circular",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "34-notice",
+       "name": "Notice",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "34-announcement",
+       "name": "Announcement",
+       "elements": [],
+       "genre": "announcement"
+      },
+      {
+       "id": "34-bulletin",
+       "name": "Bulletin",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "34-advisory",
+       "name": "Advisory",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "34-alert",
+       "name": "Alert",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "34-invitation",
+       "name": "Invitation",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "34-thank-you-letter",
+       "name": "Thank-you letter",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "34-complaint-letter",
+       "name": "Complaint letter",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "34-demand-letter",
+       "name": "Demand letter",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "34-recommendation-letter",
+       "name": "Recommendation letter",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "34-open-letter",
+       "name": "Open letter",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 35,
+   "name": "Meetings & Organizational Records",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "35-agenda",
+       "name": "Agenda",
+       "elements": [],
+       "genre": "agenda"
+      },
+      {
+       "id": "35-minutes",
+       "name": "Minutes",
+       "elements": [],
+       "genre": "minutes"
+      },
+      {
+       "id": "35-meeting-notes",
+       "name": "Meeting notes",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "35-transcript",
+       "name": "Transcript",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "35-action-item-list",
+       "name": "Action-item list",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "35-decision-log",
+       "name": "Decision log",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "35-resolution",
+       "name": "Resolution",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "35-attendance-record",
+       "name": "Attendance record",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "35-workshop-report",
+       "name": "Workshop report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "35-conference-proceedings",
+       "name": "Conference proceedings",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 36,
+   "name": "Forms & Structured Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "36-application",
+       "name": "Application",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "36-registration-form",
+       "name": "Registration form",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "36-intake-form",
+       "name": "Intake form",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "36-questionnaire",
+       "name": "Questionnaire",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "36-order-form",
+       "name": "Order form",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "36-consent-form",
+       "name": "Consent form",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "36-authorization-form",
+       "name": "Authorization form",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "36-waiver",
+       "name": "Waiver",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "36-claim-form",
+       "name": "Claim form",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "36-tax-form",
+       "name": "Tax form",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "36-government-form",
+       "name": "Government form",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "36-medical-form",
+       "name": "Medical form",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "36-inspection-checklist",
+       "name": "Inspection checklist",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "36-assessment-form",
+       "name": "Assessment form",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "36-evaluation-form",
+       "name": "Evaluation form",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "36-ballot",
+       "name": "Ballot",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 37,
+   "name": "Data-Centric Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "37-dataset",
+       "name": "Dataset",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-data-dictionary",
+       "name": "Data dictionary",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-schema",
+       "name": "Schema",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-metadata-record",
+       "name": "Metadata record",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-data-catalog",
+       "name": "Data catalog",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-table",
+       "name": "Table",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-spreadsheet",
+       "name": "Spreadsheet",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-statistical-table",
+       "name": "Statistical table",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-dashboard-report",
+       "name": "Dashboard report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-machine-readable-report",
+       "name": "Machine-readable report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-xml-document",
+       "name": "XML document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-json-document",
+       "name": "JSON document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-csv-dataset",
+       "name": "CSV dataset",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-database-export",
+       "name": "Database export",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-knowledge-graph",
+       "name": "Knowledge graph",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-ontology",
+       "name": "Ontology",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-taxonomy",
+       "name": "Taxonomy",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "37-controlled-vocabulary",
+       "name": "Controlled vocabulary",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 38,
+   "name": "AI & Machine-Learning Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "38-model-card",
+       "name": "Model card",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-dataset-card",
+       "name": "Dataset card",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-system-card",
+       "name": "System card",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-ai-evaluation-report",
+       "name": "AI evaluation report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-benchmark-report",
+       "name": "Benchmark report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-training-data-description",
+       "name": "Training-data description",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-ai-safety-assessment",
+       "name": "AI safety assessment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-bias-fairness-assessment",
+       "name": "Bias/fairness assessment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-red-team-report",
+       "name": "Red-team report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-model-specification",
+       "name": "Model specification",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-prompt-specification",
+       "name": "Prompt specification",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-agent-specification",
+       "name": "Agent specification",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-ai-architecture-specification",
+       "name": "AI architecture specification",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-inference-specification",
+       "name": "Inference specification",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-evaluation-dataset",
+       "name": "Evaluation dataset",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-ai-governance-document",
+       "name": "AI governance document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-ai-risk-report",
+       "name": "AI risk report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "38-ai-incident-report",
+       "name": "AI incident report",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 39,
+   "name": "Security, Intelligence & Cybersecurity",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "39-threat-assessment",
+       "name": "Threat assessment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "39-threat-intelligence-report",
+       "name": "Threat-intelligence report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "39-vulnerability-report",
+       "name": "Vulnerability report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "39-penetration-test-report",
+       "name": "Penetration-test report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "39-security-audit",
+       "name": "Security audit",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "39-security-assessment",
+       "name": "Security assessment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "39-incident-response-report",
+       "name": "Incident-response report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "39-forensic-report",
+       "name": "Forensic report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "39-intelligence-report",
+       "name": "Intelligence report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "39-intelligence-estimate",
+       "name": "Intelligence estimate",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "39-situation-report",
+       "name": "Situation report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "39-risk-assessment",
+       "name": "Risk assessment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "39-security-policy",
+       "name": "Security policy",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "39-security-architecture",
+       "name": "Security architecture",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "39-business-impact-analysis",
+       "name": "Business-impact analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "39-disaster-recovery-plan",
+       "name": "Disaster-recovery plan",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 40,
+   "name": "Historical & Archival Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "40-diary",
+       "name": "Diary",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "40-journal",
+       "name": "Journal",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "40-personal-correspondence",
+       "name": "Personal correspondence",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "40-manuscript",
+       "name": "Manuscript",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "40-chronicle",
+       "name": "Chronicle",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "40-oral-history-transcript",
+       "name": "Oral-history transcript",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "40-archival-record",
+       "name": "Archival record",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "40-government-record",
+       "name": "Government record",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "40-census-record",
+       "name": "Census record",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "40-genealogy-record",
+       "name": "Genealogy record",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "40-map",
+       "name": "Map",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "40-historical-register",
+       "name": "Historical register",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "40-newspaper-archive",
+       "name": "Newspaper archive",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "40-photograph-record",
+       "name": "Photograph record",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "40-artifact-record",
+       "name": "Artifact record",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 41,
+   "name": "Religious, Philosophical & Theological Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "41-scripture",
+       "name": "Scripture",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "41-commentary",
+       "name": "Commentary",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "41-exegesis",
+       "name": "Exegesis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "41-sermon",
+       "name": "Sermon",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "41-homily",
+       "name": "Homily",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "41-devotional",
+       "name": "Devotional",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "41-theology-paper",
+       "name": "Theology paper",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "41-doctrinal-statement",
+       "name": "Doctrinal statement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "41-apologetic-work",
+       "name": "Apologetic work",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "41-religious-study",
+       "name": "Religious study",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "41-comparative-religion-analysis",
+       "name": "Comparative-religion analysis",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "41-philosophical-treatise",
+       "name": "Philosophical treatise",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "41-philosophical-essay",
+       "name": "Philosophical essay",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "41-ethics-paper",
+       "name": "Ethics paper",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "41-meditation-reflection",
+       "name": "Meditation/reflection",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "41-prophecy-analysis",
+       "name": "Prophecy analysis",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 42,
+   "name": "Creative & Literary Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "42-novel",
+       "name": "Novel",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-novella",
+       "name": "Novella",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-short-story",
+       "name": "Short story",
+       "elements": [],
+       "genre": "short-story"
+      },
+      {
+       "id": "42-flash-fiction",
+       "name": "Flash fiction",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-poetry",
+       "name": "Poetry",
+       "elements": [],
+       "genre": "poem"
+      },
+      {
+       "id": "42-play",
+       "name": "Play",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-screenplay",
+       "name": "Screenplay",
+       "elements": [],
+       "genre": "script"
+      },
+      {
+       "id": "42-radio-drama",
+       "name": "Radio drama",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-graphic-novel",
+       "name": "Graphic novel",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-comic-script",
+       "name": "Comic script",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-children-s-story",
+       "name": "Children's story",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-fable",
+       "name": "Fable",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-myth",
+       "name": "Myth",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-legend",
+       "name": "Legend",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-satire",
+       "name": "Satire",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-song",
+       "name": "Song",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-lyrics",
+       "name": "Lyrics",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-narrative-treatment",
+       "name": "Narrative treatment",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-story-outline",
+       "name": "Story outline",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-character-profile",
+       "name": "Character profile",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "42-world-building-bible",
+       "name": "World-building bible",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 43,
+   "name": "Marketing, Advertising & Public Relations",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "43-advertisement",
+       "name": "Advertisement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-advertising-copy",
+       "name": "Advertising copy",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-campaign-brief",
+       "name": "Campaign brief",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-creative-brief",
+       "name": "Creative brief",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-press-release",
+       "name": "Press release",
+       "elements": [],
+       "genre": "press-release"
+      },
+      {
+       "id": "43-media-advisory",
+       "name": "Media advisory",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-media-kit",
+       "name": "Media kit",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-product-description",
+       "name": "Product description",
+       "elements": [],
+       "genre": "product-description"
+      },
+      {
+       "id": "43-landing-page-copy",
+       "name": "Landing-page copy",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-brochure",
+       "name": "Brochure",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-sales-sheet",
+       "name": "Sales sheet",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-brand-guideline",
+       "name": "Brand guideline",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-brand-strategy",
+       "name": "Brand strategy",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-marketing-strategy",
+       "name": "Marketing strategy",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-social-media-post",
+       "name": "Social-media post",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-social-media-campaign",
+       "name": "Social-media campaign",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-seo-article",
+       "name": "SEO article",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-email-campaign",
+       "name": "Email campaign",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "43-case-study",
+       "name": "Case study",
+       "elements": [],
+       "genre": "case-study"
+      },
+      {
+       "id": "43-testimonial",
+       "name": "Testimonial",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 44,
+   "name": "Standards, Rules & Compliance Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "44-standard",
+       "name": "Standard",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "44-technical-standard",
+       "name": "Technical standard",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "44-industry-standard",
+       "name": "Industry standard",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "44-specification",
+       "name": "Specification",
+       "elements": [],
+       "genre": "specification"
+      },
+      {
+       "id": "44-code",
+       "name": "Code",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "44-regulation",
+       "name": "Regulation",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "44-guideline",
+       "name": "Guideline",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "44-best-practice-document",
+       "name": "Best-practice document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "44-compliance-framework",
+       "name": "Compliance framework",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "44-control-framework",
+       "name": "Control framework",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "44-certification-standard",
+       "name": "Certification standard",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "44-audit-checklist",
+       "name": "Audit checklist",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "44-compliance-report",
+       "name": "Compliance report",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "44-accreditation-documentation",
+       "name": "Accreditation documentation",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "n": 45,
+   "name": "Personal & Household Documents",
+   "caution": "",
+   "families": [
+    {
+     "name": "",
+     "types": [
+      {
+       "id": "45-personal-identification",
+       "name": "Personal identification",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-birth-certificate",
+       "name": "Birth certificate",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-marriage-certificate",
+       "name": "Marriage certificate",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-death-certificate",
+       "name": "Death certificate",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-passport-record",
+       "name": "Passport record",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-tax-record",
+       "name": "Tax record",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-bank-statement",
+       "name": "Bank statement",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-utility-bill",
+       "name": "Utility bill",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-receipt",
+       "name": "Receipt",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-warranty",
+       "name": "Warranty",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-insurance-document",
+       "name": "Insurance document",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-medical-record",
+       "name": "Medical record",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-personal-budget",
+       "name": "Personal budget",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-household-inventory",
+       "name": "Household inventory",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-personal-correspondence",
+       "name": "Personal correspondence",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-resume",
+       "name": "Resume",
+       "elements": [],
+       "genre": "resume"
+      },
+      {
+       "id": "45-personal-journal",
+       "name": "Personal journal",
+       "elements": [],
+       "genre": ""
+      },
+      {
+       "id": "45-travel-itinerary",
+       "name": "Travel itinerary",
+       "elements": [],
+       "genre": ""
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

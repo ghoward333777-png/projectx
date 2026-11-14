@@ -372,6 +372,9 @@ def writer_brief(bp: dict) -> str:
     if bp["fiction"]:
         for v in FICTION_RULES:                              # the user's tips for stories bind whoever drafts
             lines.append("STORY: %s." % v)
+    if bp.get("genre") in ESSAY_GENRES:
+        for v in ESSAY_RULES:                                # the user's tips on structure for the reader
+            lines.append("STRUCTURE: %s." % v)
     if not bp["fiction"]:
         for v in VOICE_RULES:                                # the user's VOICE guidelines bind whoever drafts
             lines.append("VOICE: %s." % v)
@@ -994,8 +997,21 @@ FICTION_RULES = (
     "Stakes: say exactly what this person stands to lose — a person, a place, a promise — never 'everything'",
     "Pacing: match sentence length to the heat of the moment — short when it is tense, longer when it settles",
     "Opening: start where the trouble starts, not with waking up or a routine",
-    "Description: trust nouns and verbs; one chosen detail, not a stack of adjectives; break paragraphs and leave white space")
-FICTION_HABITS = ("dialogue", "point of view", "stakes", "pacing", "opening", "overwriting")
+    "Description: trust nouns and verbs; one chosen detail, not a stack of adjectives; break paragraphs and leave white space",
+    # the unfinished holds the reader (the user's second set of tips, 2026-11-14): what is left open is remembered
+    "A coming event: lead the story toward one particular event the reader can see coming, with a clock on it",
+    "Chapter endings: end each chapter or scene on something open — a question, a threat, a decision not yet made — never on tidy rest",
+    "Planted things: bring in early the object, secret or fear that will matter later, and pay each one off")
+FICTION_HABITS = ("dialogue", "point of view", "stakes", "pacing", "opening", "overwriting", "coming event", "chapter endings", "planted things")
+CLOCK = re.compile(r"(by (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|morning|noon|midnight|nightfall|dawn|tomorrow|the end of)|"
+                   r"until|before the|in (?:two|three|four|five|six|seven|ten|\d+) (?:days|hours|weeks|minutes|months)|tomorrow|tonight|deadline|"
+                   r"(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|the (?:wedding|trial|election|funeral|hearing|race|final|auction|launch|"
+                   r"opening|exam|vote|duel|storm|eclipse|festival|verdict)|days? (?:left|away)|hours? (?:left|away)|countdown|when the)\b", re.I)
+FLAT_END = re.compile(r"\b(fell asleep|went to (?:bed|sleep)|drifted off|slept|went home|all was well|at peace|everything was (?:fine|all right|okay)|"
+                      r"smiled(?: to (?:himself|herself|themselves))?|sighed contentedly|and that was that|the day was over|turned off the light|"
+                      r"safe at last|nothing more to (?:say|do)|happily)\b[^.!?]*[.!?”\"]*\s*$", re.I)
+OPEN_END = re.compile(r"\?[”\"]?\s*$|—[”\"]?\s*$|\b(but|until|unless|if|not yet|still|then (?:he|she|they|it) (?:saw|heard|knew)|someone|something|gone|"
+                      r"wrong|too late|never|no one|knock|door|phone|blood|missing|friday|tomorrow)\b[^.!?]*[.!?”\"]*\s*$", re.I)
 SPOKEN = re.compile(r"[“\"]([^”\"]{2,})[”\"]")
 UNCONTRACTED = re.compile(r"\b(do not|does not|did not|cannot|can not|will not|would not|could not|should not|is not|are not|was not|were not|have not|has not|"
                           r"i am|i will|i have|i would|you are|you will|you have|we are|we will|they are|it is|that is|there is|let us)\b", re.I)
@@ -1035,7 +1051,8 @@ def fiction_audit(text: str) -> dict:
         therapy = [l for l in lines if THERAPY.search(l)]
         for l in therapy[:3]:
             found.append("explains feelings like a counselling session: “%s”" % l[:110])
-        if not any(MESSY.search(l) for l in lines):
+        every = [m.group(1) for m in SPOKEN.finditer(text)]
+        if not any(MESSY.search(l) or len(WORD.findall(l)) <= 3 for l in every):
             found.append("no one interrupts, trails off or hesitates in %d spoken lines" % len(lines))
         long_ = [l for l in lines if len(WORD.findall(l)) > 30]
         if len(long_) * 3 >= len(lines):
@@ -1082,9 +1099,28 @@ def fiction_audit(text: str) -> dict:
     if big:
         found.append("%d paragraph%s over 170 words with no break: give the page some white space" % (len(big), "" if len(big) == 1 else "s"))
     parts.append({"habit": "overwriting", "found": found, "ask": ["Which noun and verb do the work here?", "What can go without the reader missing it?"] if found else []})
+    # ---- a coming event with a clock on it
+    found = []
+    if len(words) >= 250 and not CLOCK.search(text):
+        found.append("nothing is coming: no day, deadline or named event the story is heading for in %d words" % len(words))
+    parts.append({"habit": "coming event", "found": found, "ask": ["What is the one event everything leads to?", "When is it — and does the reader know?"] if found else []})
+    # ---- chapter and scene endings
+    found = []
+    scs = scenes(text)
+    for n, sc in enumerate(scs):
+        ss = sentences(sc)
+        if len(ss) < 3:
+            continue
+        last = ss[-1]
+        if FLAT_END.search(last) and not OPEN_END.search(last.replace("smiled", "")):
+            found.append("%s %d ends at rest: “%s”" % ("scene" if len(scs) > 1 else "the piece", n + 1, last[-110:]))
+    parts.append({"habit": "chapter endings", "found": found[:5], "ask": ["What is still open when the chapter stops?", "Could it end one beat earlier?"] if found else []})
+    # ---- planted things: rules cannot see a payoff across a book; the questions are the writer's
+    parts.append({"habit": "planted things", "found": [], "ask": []})
     for p, rule in zip(parts, FICTION_RULES):
         p["rule"], p["ok"] = rule, not p["found"]
-    return {"parts": parts, "passed": all(p["ok"] for p in parts)}
+    return {"parts": parts, "passed": all(p["ok"] for p in parts),
+            "for_the_writer": ["Planted things: which object, secret or fear appears early — and where is each one paid off? (Rules cannot follow a thread across a book.)"]}
 
 
 def fiction_text(a: dict) -> str:
@@ -1098,4 +1134,362 @@ def fiction_text(a: dict) -> str:
             lines.append("  • " + f)
         for q in p["ask"]:
             lines.append("  ? " + q)
+    lines.append("")
+    lines.append("FOR YOU, NOT A MACHINE")
+    lines += ["  □ " + w for w in a.get("for_the_writer", [])]
     return "\n".join(lines)
+
+
+# ================================================================================================ essay structure for the reader
+# The user's tips (2026-11-14, from their notes on a talk about structuring an essay around the reader's needs; QueryBook's words).
+# Five elements: a title that builds curiosity, an introduction that poses a problem, index-and-discussion at every level,
+# a constellation of key terms, and a conclusion that returns to the problem and widens it.
+ESSAY_GENRES = ("essay", "critique", "explainer", "feature", "nonfiction-chapter", "research-paper", "literature-review")
+ESSAY_RULES = (
+    "Title: build curiosity — pose a question, promise something not widely known, or go against what is expected; no private joke, nothing cryptic",
+    "Introduction: do not go from general to specific or from background to thesis. Pose a problem the reader has or should have, and set your idea as its answer",
+    "Index and discussion, at every level: the first one to three sentences of the essay, of each section and of each paragraph say how to read what follows; "
+    "the rest develops it",
+    "Key terms: carry a small set of terms (and their near-synonyms) from the introduction through every part, so the pieces are felt to belong together",
+    "Conclusion: do not merely summarise. Return to the problem from the introduction and show what the answer changes or adds to the wider conversation")
+ESSAY_ELEMENTS = ("title", "introduction", "index and discussion", "key terms", "conclusion")
+SCHOOL_OPENING = re.compile(r"\b(since the dawn of|throughout (?:human )?history|from the beginning of time|in today's society|in the modern world|"
+                            r"dictionary defines|in this essay,? i will|this essay will|for centuries|many people (?:think|believe|say)|it is often said)\b", re.I)
+PROBLEM = re.compile(r"\?|\b(but|yet|however|problem|puzzle|question|why|fail\w*|wrong|missing|despite|although|mistake\w*|trouble|gap|struggle\w*|"
+                     r"paradox|surpris\w+|contradict\w+|nobody|no one|cannot|can't|hard to|difficult)\b", re.I)
+CURIOUS = re.compile(r"\?|\d|^(?:how|why|what|when|who|where)\b|\b(secret|hidden|myth|wrong|mistake|never|nobody|without|versus|vs|against|untold|real|"
+                     r"really|actually|not|isn't|doesn't|won't|truth|lie|unexpected|surprising|case for|case against|problem with|end of|death of)\b", re.I)
+SUMMARY_ONLY = re.compile(r"^\s*(in conclusion|to conclude|to sum up|in summary|to summari[sz]e|in closing|all in all|overall,|as (?:shown|discussed|stated) above)\b", re.I)
+SO_WHAT = re.compile(r"\b(so|therefore|means|matters?|should|must|next|beyond|larger|broader|wider|changes?|changed|question|if we|the lesson|suggests|implies|"
+                     r"otherwise|until|no longer)\b", re.I)
+
+
+def title_of(text: str) -> tuple[str, str]:
+    """(title, the rest): the first line when it is short and is not a sentence, or a '# ' heading; else ("", text)"""
+    lines = text.strip().split("\n")
+    first = lines[0].strip() if lines else ""
+    bare = first.lstrip("# ").strip()
+    if first and (first.startswith("#") or (len(WORD.findall(bare)) <= 16 and not bare.endswith((".", ",", ";")) and len(lines) > 1)):
+        return bare, "\n".join(lines[1:]).strip()
+    return "", text.strip()
+
+
+def essay_audit(text: str) -> dict:
+    """an essay read for the five structural elements: {"parts": [{"element", "rule", "ok", "found", "ask"}], "terms", "passed"}"""
+    title, body = title_of(text)
+    paras = [p for p in paragraphs(body) if not p.lstrip().startswith("#")]
+    parts: list[dict] = []
+    stems = [set(content(p)) for p in paras]
+    allwords = [w for p in paras for w in content(p)]
+    # ---- title
+    found: list[str] = []
+    if not title:
+        found.append("no title found on the first line")
+    else:
+        tw = set(content(title))
+        if len(WORD.findall(title)) <= 2:
+            found.append("“%s” is a label, not a reason to read" % title)
+        elif tw and not (tw & set(allwords)):
+            found.append("no word of “%s” comes back in the essay: a private reference?" % title)
+        if not CURIOUS.search(title):
+            found.append("the title asks nothing, promises nothing unknown and crosses no expectation")
+    parts.append({"element": "title", "found": found, "ask": ["What would make a stranger want the answer?"] if found else []})
+    # ---- introduction
+    found = []
+    intro = paras[0] if paras else ""
+    if intro:
+        m = SCHOOL_OPENING.search(intro)
+        if m:
+            found.append("opens the way school taught (“%s …”): general first, the point later" % m.group(0))
+        if not PROBLEM.search(intro):
+            found.append("poses no problem: nothing is wrong, missing or puzzling yet, so there is nothing for your idea to solve")
+    parts.append({"element": "introduction", "found": found, "ask": ["What problem does the reader have — or not yet know they have?",
+                                                                     "How is your idea the answer to it?"] if found else []})
+    # ---- index and discussion
+    found = []
+    for n, p in enumerate(paras):
+        ss = sentences(p)
+        if len(ss) < 4:
+            continue
+        index = set(content(" ".join(ss[:2])))
+        later = ss[2:]
+        tied = sum(1 for s in later if index & set(content(s)))
+        if tied * 10 < len(later) * 4:
+            found.append("paragraph %d: its first sentences do not set up what follows (%d of %d later sentences pick up none of their words)" % (n + 1, len(later) - tied, len(later)))
+    parts.append({"element": "index and discussion", "found": found[:6], "ask": ["What must the reader know first to read this part the right way?"] if found else []})
+    # ---- key terms
+    found = []
+    seed = [w for w in content(title + " " + intro)]
+    counts: dict[str, int] = {}
+    for w in allwords:
+        counts[w] = counts.get(w, 0) + 1
+    terms = sorted({w for w in seed if counts.get(w, 0) >= 2 and len(w) > 3}, key=lambda w: (-counts[w], w))[:6]
+    if len(paras) >= 4:
+        if not terms:
+            found.append("no term from the title or introduction returns later: nothing ties the parts together")
+        else:
+            loose = [n + 1 for n, st in enumerate(stems) if n and not (st & set(terms))]
+            if len(loose) * 10 > (len(paras) - 1) * 4:
+                found.append("paragraphs %s carry none of the essay's key terms (%s)" % (", ".join(map(str, loose[:8])), ", ".join(terms)))
+    parts.append({"element": "key terms", "found": found, "ask": ["Which three or four terms are this essay's own? Do they recur, in the same words?"] if found else []})
+    # ---- conclusion
+    found = []
+    if len(paras) >= 3:
+        end = paras[-1]
+        if SUMMARY_ONLY.search(end):
+            found.append("the ending announces a summary (“%s …”)" % SUMMARY_ONLY.search(end).group(0).strip())
+        if stems[0] and not (stems[0] & stems[-1]):
+            found.append("the ending does not return to the problem the introduction posed")
+        if not SO_WHAT.search(end):
+            found.append("the ending restates; it does not say what the answer changes or where it leads")
+    parts.append({"element": "conclusion", "found": found, "ask": ["What does the reader now see differently?", "What larger conversation does this join?"] if found else []})
+    for p, rule in zip(parts, ESSAY_RULES):
+        p["rule"], p["ok"] = rule, not p["found"]
+    return {"parts": parts, "terms": terms, "title": title, "passed": all(p["ok"] for p in parts)}
+
+
+def essay_text(a: dict) -> str:
+    lines = ["STRUCTURE FOR THE READER — five elements. " + ("All five are in place, as far as rules can see." if a["passed"] else "What to look at:")]
+    for p in a["parts"]:
+        lines.append("")
+        lines.append("%s — %s." % (p["element"].upper(), p["rule"]))
+        if not p["found"]:
+            lines.append("  ✔ nothing found by the rules")
+        for f in p["found"]:
+            lines.append("  • " + f)
+        for q in p["ask"]:
+            lines.append("  ? " + q)
+    if a["terms"]:
+        lines.append("")
+        lines.append("The essay's key terms, as the rules see them: " + ", ".join(a["terms"]) + ".")
+    return "\n".join(lines)
+
+
+# ================================================================================================ the universal document types
+# The user's taxonomy (2026-11-14; tools/doctypes_source.txt -> doctypes.json): 45 domains, their families and types, the parts each
+# type is expected to have, and the purposes a document can serve. The person is ASKED for the type before anything is planned,
+# written or judged. A type QueryBook holds a full record for uses that record; any other type is planned from the list's own parts.
+def load_doctypes(raw: str) -> dict:
+    """doctypes.json -> {"domains": [...], "purposes": [...], "types": {id: type + its domain, family and caution}}"""
+    d = json.loads(raw)
+    types: dict[str, dict] = {}
+    for dom in d["domains"]:
+        for fam in dom["families"]:
+            for t in fam["types"]:
+                types[t["id"]] = dict(t, domain=dom["name"], domain_n=dom["n"], family=fam["name"], caution=dom.get("caution", ""))
+    return {"domains": d["domains"], "purposes": d["purposes"], "types": types}
+
+
+GENERAL_SHAPE = (("Opening", "say what this document is and what it is for"), ("Body", "give what the reader needs, the most important first"),
+                 ("Close", "say what happens next, or what is asked of the reader"))
+CREATIVE_DOMAINS = (42,)
+
+
+def genre_from_type(t: dict) -> dict:
+    """a document type of the taxonomy as a record the planner and the critic can use: its sections are the parts the list
+    expects, in the list's order. Where the list gives no parts, a general shape is used and said to be general."""
+    els = [str(e) for e in t.get("elements") or []]
+    secs = [{"name": e[:1].upper() + e[1:], "move": "give the " + e.lower(), "required": True} for e in els] or \
+           [{"name": n, "move": m, "required": True} for n, m in GENERAL_SHAPE]
+    fiction = int(t.get("domain_n") or 0) in CREATIVE_DOMAINS
+    status = ("type from the document-type list with the list's own parts" if els and not t.get("from_group") else
+              "type from the document-type list, with the parts the list gives for its group" if els else
+              "type from the document-type list, which gives it no parts: a general shape is used") + "; no source has been learned for it yet"
+    return {"id": t["id"], "name": t["name"].lower(), "also": [], "family": "fiction" if fiction else "doctype",
+            "purpose": "serve as %s (%s)" % (a_an(t["name"].lower()), t.get("domain", "")), "reader": "the reader this kind of document is written for",
+            "headed": not fiction, "frameworks": {"document": "index", "section": "index", "paragraph": "index"}, "sections": secs,
+            "register": {"person": "any", "tense": "any", "formality": "any", "hedging": "some", "words": [0, 10 ** 9]},
+            "evidence": "only what the brief, the writer's own material and the supplied facts give",
+            "constraints": ["say plainly that this is " + t["caution"]] if t.get("caution") else [], "failures": [],
+            "provenance": {"status": status, "sources": [], "variants": []}}
+
+
+# ================================================================================================ analysis and the writer's controls
+# The user (2026-11-14): the engine is for ANALYSIS and GENERATION alike — find the type, goal, voice and tone of an existing
+# document, and apply a chosen type, goal, voice and tone to a new one. "Every aspect of writing must be placed at the control of
+# the user — so that the resulting text reads like human writing and not generic AI writing."
+# What is read from a text is measured or matched by rule and labelled "likely"; where the rules cannot tell, it says so.
+TONES = {
+    "warm": ("thank", "thanks", "grateful", "glad", "happy", "welcome", "kind", "care", "wish", "hope", "pleased", "dear", "appreciate", "love"),
+    "urgent": ("now", "immediately", "urgent", "today", "deadline", "at once", "asap", "must", "act", "last chance", "before it"),
+    "confident": ("will", "certainly", "clearly", "proven", "sure", "definitely", "always", "never", "no doubt", "without question"),
+    "cautious": ("may", "might", "could", "perhaps", "possibly", "appears", "seems", "suggests", "likely", "uncertain", "however"),
+    "critical": ("fails", "failed", "wrong", "poor", "weak", "mistake", "flawed", "problem", "lacks", "ignores", "worse", "bad"),
+    "optimistic": ("opportunity", "growth", "improve", "better", "progress", "promise", "bright", "success", "gain", "forward", "can"),
+    "sombre": ("loss", "death", "died", "grief", "sorrow", "regret", "sadly", "mourn", "tragic", "suffer", "pain"),
+    "playful": ("fun", "silly", "joke", "laugh", "oops", "wow", "hey", "guess what", "funny", "yay"),
+    "respectful": ("please", "kindly", "respectfully", "sir", "madam", "honour", "honor", "would you", "may i", "sincerely"),
+    "instructive": ("first", "then", "next", "step", "make sure", "do not", "remember to", "check", "follow", "use"),
+    "persuasive": ("should", "imagine", "why not", "you deserve", "join", "because", "the reason", "consider", "need"),
+    "neutral": ()}
+PURPOSE_CUES = {
+    "Instruct": ("step", "first", "then", "next", "make sure", "do not", "press", "click", "install"),
+    "Persuade": ("should", "must", "join", "buy", "support", "vote", "imagine", "why not", "act now"),
+    "Argue": ("because", "therefore", "however", "argue", "claim", "evidence", "objection", "thus"),
+    "Analyze": ("analysis", "data", "trend", "factor", "compared", "percent", "finding", "findings", "pattern", "correlation", "correlated"),
+    "Compare": ("whereas", "compared with", "in contrast", "both", "similar", "differ", "versus", "than"),
+    "Recommend": ("recommend", "we advise", "should adopt", "best option", "suggest", "proposal"),
+    "Request": ("please", "request", "could you", "would you", "i am writing to ask", "kindly", "apply"),
+    "Record": ("minutes", "attended", "resolved", "recorded", "on the date", "hereby", "noted"),
+    "Contract": ("shall", "party", "parties", "agreement", "hereby", "terms", "obligation", "warrant"),
+    "Teach": ("learn", "lesson", "exercise", "example", "objective", "student", "practice", "understand"),
+    "Explain": ("means", "that is", "in other words", "works by", "the reason", "how", "why"),
+    "Entertain": ("said", "laughed", "once", "suddenly", "door", "night", "smiled", "whispered"),
+    "Evaluate": ("criteria", "rating", "strength", "weakness", "score", "assessment", "overall", "review"),
+    "Predict": ("forecast", "will likely", "expected to", "projection", "outlook", "by 20", "scenario"),
+    "Inform": ("announce", "report", "according to", "said", "update", "news", "today")}
+PASSIVE = re.compile(r"\b(?:is|are|was|were|be|been|being)\s+(?:\w+ly\s+)?\w+(?:ed|en)\b", re.I)
+CONTROLS = {
+    "tone": tuple(TONES),
+    "tone2": tuple(TONES),
+    "person": ("first person — I", "first person — we", "second person — you", "third person"),
+    "formality": ("very formal", "formal", "plain professional", "informal", "casual"),
+    "sentences": ("short", "medium", "long", "mixed — short and long"),
+    "reading": ("for anyone — everyday words", "general reader", "expert reader — keep the technical terms"),
+    "contractions": ("yes", "no"),
+    "feeling": ("restrained", "some feeling", "openly emotional"),
+    "humour": ("none", "a light touch", "humorous"),
+    "certainty": ("state plainly", "hedge where unsure", "tentative throughout"),
+    "detail": ("only the essentials", "balanced", "rich in particulars and examples"),
+    "opening": ("the point first", "a question", "a particular person or moment", "a surprising fact from my material"),
+    "ending": ("an action to take", "back to the opening", "a question left open", "a plain summary")}
+CONTROL_SAY = {"tone": "Tone", "tone2": "Second tone", "person": "Point of view", "formality": "Formality", "sentences": "Sentences", "reading": "Reader level",
+               "contractions": "Contractions", "feeling": "Feeling", "humour": "Humour", "certainty": "Certainty", "detail": "Detail", "opening": "Open with",
+               "ending": "End with"}
+
+
+def cue_count(low: str, cues: tuple) -> int:
+    return sum(len(re.findall(r"\b%s\b" % re.escape(c), low)) for c in cues)
+
+
+def analyze_document(text: str, doctypes: dict, styles: dict) -> dict:
+    """an existing document read for what it is and how it sounds: likely type(s), likely purpose, voice (person, active or
+    passive, formality), tone, the nearest style templates and its measured habits. Rules only: every finding is 'likely' and
+    carries what it rests on; nothing is asserted that the rules cannot see."""
+    low = text.lower().replace("’", "'")
+    words = WORD.findall(text)
+    sents = sentences(text)
+    n = max(1, len(words))
+    heads = [h.lower() for h in headings(text)]
+    title, _body = title_of(text)
+    # ---- likely type: the types whose expected parts appear as headings or words, and whose name appears near the top
+    top = (title + " " + " ".join(text.split("\n")[:6])).lower()
+    scored: list[tuple[float, str, str]] = []
+    for t in doctypes.get("types", {}).values():
+        els = [str(e).lower() for e in t.get("elements") or []]
+        hit = [e for e in els if any(p and (p in h) for h in heads for p in re.split(r"[/,]| and ", e) if len(p.strip()) > 3)]
+        score = (len(hit) / len(els) if len(els) >= 3 else 0.0) + (0.8 if re.search(r"\b%s\b" % re.escape(t["name"].lower()), top) else 0.0)
+        if score >= 0.5:
+            scored.append((round(score, 2), t["id"], "%d of its %d expected parts are headings here%s" % (
+                len(hit), len(els), "; it is named at the top" if score - (len(hit) / len(els) if len(els) >= 3 else 0) > 0 else "")))
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    likely = [{"id": i, "name": doctypes["types"][i]["name"], "domain": doctypes["types"][i]["domain"], "why": why} for _s, i, why in scored[:3]]
+    # ---- likely purpose
+    pc = sorted(((cue_count(low, cues) * 1000 // n, p) for p, cues in PURPOSE_CUES.items()), reverse=True)
+    purposes = [p for c, p in pc[:2] if c >= 8 and cue_count(low, PURPOSE_CUES[p]) >= 3]
+    # ---- voice
+    fp, sp = len(FIRST_PERSON.findall(text)), len(SECOND_PERSON.findall(text))
+    we = len(re.findall(r"\b(we|us|our|ours)\b", low))
+    person = ("first person — we" if we * 2 >= fp else "first person — I") if fp * 100 >= n * 2 and fp >= sp else \
+        "second person — you" if sp * 100 >= n * 2 else "third person"
+    passive = sum(1 for s in sents if PASSIVE.search(s))
+    contr = len(CONTRACTION.findall(text))
+    prof = style_profile(text) if len(words) >= 40 else {}
+    wl = float(prof.get("word_letters", 4.6)) if prof else 4.6
+    sw = float(prof.get("sentence_words", 16)) if prof else 16.0
+    formality = "casual" if contr * 100 >= n * 3 else "informal" if contr * 100 >= n * 1.2 else \
+        "very formal" if wl >= 5.3 and sw >= 24 and not contr else "formal" if wl >= 5.0 and not contr else "plain professional"
+    # ---- tone
+    tc = sorted(((cue_count(low, cues) * 1000 // n, tname) for tname, cues in TONES.items() if cues), reverse=True)
+    tones = [tname for c, tname in tc[:2] if c >= 10] or ["neutral"]
+    # ---- nearest style templates
+    near: list[dict] = []
+    if prof and len(words) >= STYLE_MIN_WORDS:
+        ranked = sorted(((style_distance(prof, s["profile"])["distance"], s["id"], s["name"]) for s in styles.values() if s.get("profile")))
+        near = [{"id": i, "name": nm, "distance": d} for d, i, nm in ranked[:3]]
+    controls = {"tone": tones[0], "tone2": tones[1] if len(tones) > 1 else "", "person": person, "formality": formality,
+                "sentences": "short" if sw <= 12 else "long" if sw >= 24 else "mixed — short and long" if prof and float(prof.get("sentence_spread", 0)) >= 9 else "medium",
+                "contractions": "yes" if contr * 100 >= n * 1.2 else "no",
+                "certainty": "tentative throughout" if len(HEDGE.findall(text)) * 100 >= n * 3 else "hedge where unsure" if HEDGE.search(text) else "state plainly",
+                "reading": "expert reader — keep the technical terms" if wl >= 5.3 else "for anyone — everyday words" if wl <= 4.3 else "general reader"}
+    return {"words": len(words), "sentences": len(sents), "likely_types": likely, "purposes": purposes, "person": person,
+            "passive_share": round(passive / max(1, len(sents)), 2), "formality": formality, "tones": tones, "styles": near, "profile": prof,
+            "controls": controls, "enough_for_style": len(words) >= STYLE_MIN_WORDS}
+
+
+def analysis_text(a: dict) -> str:
+    lines = ["WHAT THIS DOCUMENT IS — read by rules; every line is a likelihood, not a ruling", ""]
+    if a["likely_types"]:
+        lines.append("Type, likely:")
+        lines += ["  • %s (%s) — %s" % (t["name"], t["domain"], t["why"]) for t in a["likely_types"]]
+    else:
+        lines.append("Type: the rules cannot tell — it has no headings or name that match a type in the list. Choose the type yourself.")
+    lines.append("Purpose, likely: " + (", ".join(a["purposes"]).lower() if a["purposes"] else "the rules cannot tell") + ".")
+    lines += ["", "HOW IT SOUNDS", "Point of view: %s." % a["person"], "Formality: %s." % a["formality"],
+              "Tone, likely: %s." % " and ".join(a["tones"]),
+              "Voice: %d%% of sentences are passive." % round(a["passive_share"] * 100)]
+    p = a["profile"]
+    if p:
+        lines.append("Sentences: about %s words on average%s; words about %s letters; paragraphs about %s sentences." % (
+            p["sentence_words"], ", varied" if p["sentence_spread"] >= 9 else ", even" if p["sentence_spread"] <= 5 else "", p["word_letters"], p["paragraph_sentences"]))
+    if a["styles"]:
+        lines.append("Nearest style templates: " + "; ".join("%s (%.2f away)" % (s["name"], s["distance"]) for s in a["styles"]) + ". (0 = the same habits.)")
+    elif not a["enough_for_style"]:
+        lines.append("Style: too short to measure against the templates (%d words; %d are needed)." % (a["words"], STYLE_MIN_WORDS))
+    lines += ["", "TO WRITE LIKE THIS: use “Write with these settings” — the controls are set from this reading, and you can change any of them."]
+    return "\n".join(lines)
+
+
+def controls_brief(controls: dict) -> list[str]:
+    """the person's own settings as instructions for whoever drafts; a setting left unset is left to the type and the style"""
+    out: list[str] = []
+    tones = [str(controls.get(k) or "") for k in ("tone", "tone2")]
+    tones = [t for t in tones if t in TONES and t != "neutral"]
+    if tones:
+        out.append("Tone: %s — carried by word choice and rhythm, never announced" % " and ".join(tones))
+    elif controls.get("tone") == "neutral":
+        out.append("Tone: neutral — no colouring words")
+    for k in ("person", "formality", "sentences", "reading", "feeling", "humour", "certainty", "detail", "opening", "ending"):
+        v = str(controls.get(k) or "")
+        if v in CONTROLS[k]:
+            out.append("%s: %s" % (CONTROL_SAY[k], v))
+    if controls.get("contractions") in ("yes", "no"):
+        out.append("Contractions: " + ("use them" if controls["contractions"] == "yes" else "do not use them"))
+    try:
+        w = int(controls.get("words") or 0)
+    except (TypeError, ValueError):
+        w = 0
+    if w > 0:
+        out.append("Length: about %d words" % w)
+    return out
+
+
+def controls_check(text: str, controls: dict) -> list[dict]:
+    """the settings a rule can measure, checked against the draft: [{"control", "ok", "why"}]"""
+    out: list[dict] = []
+    words = WORD.findall(text)
+    n = max(1, len(words))
+    a = analyze_document(text, {"types": {}}, {})
+    want = str(controls.get("person") or "")
+    if want in CONTROLS["person"]:
+        ok = a["person"].split(" — ")[0] == want.split(" — ")[0]
+        out.append({"control": "Point of view", "ok": ok, "why": "asked for %s; the draft reads as %s" % (want, a["person"])})
+    if controls.get("contractions") in ("yes", "no"):
+        c = len(CONTRACTION.findall(text))
+        ok = (c > 0) if controls["contractions"] == "yes" else (c == 0)
+        out.append({"control": "Contractions", "ok": ok, "why": "%d in the draft; asked: %s" % (c, controls["contractions"])})
+    try:
+        w = int(controls.get("words") or 0)
+    except (TypeError, ValueError):
+        w = 0
+    if w > 0:
+        out.append({"control": "Length", "ok": abs(len(words) - w) * 4 <= w, "why": "%d words; asked for about %d" % (len(words), w)})
+    want = str(controls.get("sentences") or "")
+    if want in ("short", "long") and a["profile"]:
+        sw = float(a["profile"]["sentence_words"])
+        out.append({"control": "Sentences", "ok": sw <= 14 if want == "short" else sw >= 20, "why": "average %s words; asked for %s" % (sw, want)})
+    want = str(controls.get("tone") or "")
+    if want in TONES and TONES[want]:
+        c = cue_count(text.lower(), TONES[want])
+        out.append({"control": "Tone", "ok": None, "why": "asked for %s; %d of its usual words appear — tone is for you to judge by ear" % (want, c)})
+    return out

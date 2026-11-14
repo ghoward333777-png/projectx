@@ -2,6 +2,8 @@
 """Merge what was learned from sources into apps/shell/genres_learned.json — the rules QueryBook ships with.
 
     python tools/build_learned.py <folder>      <folder>/out/<source>.json and <folder>/pages/<source>-<n>.txt
+    python tools/build_learned.py <folder> --add   the same, keeping what earlier sessions learned from OTHER sources (their page
+                                                   texts are gone, as they must be: only their gated rules and hashes remain)
 
 Each out file is one source read by a model in a build session (the brief is docs/querybook-rebuild/writing-skills-plan.md,
 "Source learning"): pages, and for each page rule units in the reader's own words. This tool is the gate:
@@ -65,6 +67,14 @@ def main(argv):
                           "by": "a model in a QueryBook build session", "units": kept})
         if not got:
             not_read.append({"source": sid, "why": " ".join(str(d.get("why_not") or "no usable rule came from its pages").split())[:300]})
+    if "--add" in argv:
+        with open(OUT, encoding="utf-8") as f:
+            old = json.load(f)
+        fresh = {p["source"] for p in pages}
+        seen = fresh | {r["source"] for r in not_read}
+        pages += [p for p in old.get("pages") or [] if p["source"] not in fresh]
+        have = {p["source"] for p in pages}
+        not_read = [r for r in not_read if r["source"] not in have] + [r for r in old.get("not_read") or [] if r["source"] not in seen and r["source"] not in have]
     pages.sort(key=lambda p: (p["source"], p["url"]))
     not_read.sort(key=lambda r: r["source"])
     doc = {"version": "learned-1", "pages": pages, "not_read": not_read}

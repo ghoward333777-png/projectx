@@ -497,7 +497,66 @@ STYLES = [
     ("warm", "Warm and personal", "Kind and direct, as to someone known: I and you, plain words, nothing stiff.", 14, 6, .28, .04, 4.2, .05, .035, .030, .04, .020, .006, .10, .00, 3),
     ("legal-formal", "Legal formal", "Precise and unambiguous: defined terms used unchanged, complete sentences, no figure of speech.", 28, 10, .02, .50, 5.4, .24, .000, .000, .00, .000, .002, .02, .20, 4),
     ("instructional", "Instructional", "The reader is doing the task now: one action to a sentence, you, the present tense.", 12, 4, .35, .01, 4.5, .09, .000, .035, .01, .004, .001, .02, .00, 3),
+    # ---- the template library grows here (the user, 2026-11-14: "Build a Writing Style Template Library"). A template is a row:
+    #      what it sounds like in a sentence, and its habits as numbers. Described by manner, never by a named author.
+    ("public-plain", "Public notice — plain", "For everyone, first time through: the action first, everyday words, short lines.", 13, 4, .35, .02, 4.3, .07, .000, .030, .02, .004, .001, .01, .00, 2),
+    ("friendly-note", "Friendly note", "A quick word to someone you know: light, brief, contractions throughout.", 11, 6, .45, .02, 4.0, .04, .040, .030, .08, .040, .004, .12, .00, 2),
+    ("neutral-report", "Neutral report", "What was done and found, without colour: even sentences, no I, no adjectives doing the arguing.", 20, 6, .08, .20, 5.0, .18, .000, .000, .00, .000, .006, .02, .06, 4),
+    ("customer-care", "Customer care", "Calm, helpful and specific: we and you, what happens next, no blame and no jargon.", 15, 5, .22, .04, 4.4, .08, .025, .035, .03, .015, .003, .03, .00, 3),
+    ("press-release", "Press release", "The news in the first sentence, third person, a quotation, facts in order of weight.", 21, 7, .08, .22, 5.0, .17, .000, .000, .00, .000, .001, .05, .02, 2),
+    ("newsletter", "Newsletter", "A regular voice the reader knows: brisk, a little personal, short items with a point each.", 14, 7, .30, .05, 4.4, .08, .020, .020, .08, .020, .003, .14, .00, 3),
+    ("minutes", "Minutes — terse", "Decisions and actions only: who, what, by when; fragments allowed, nothing narrated.", 10, 4, .50, .00, 4.8, .12, .000, .000, .00, .000, .000, .02, .04, 2),
+    ("magazine-feature", "Magazine feature", "Scene first, then the wider story: varied rhythm, people and particulars, a through-line.", 20, 12, .22, .25, 4.6, .11, .004, .002, .04, .008, .004, .25, .06, 4),
+    ("opinion-column", "Opinion column", "One arguable claim, said with an edge: I, short punches after long builds, a turn at the end.", 17, 11, .30, .15, 4.5, .10, .020, .010, .10, .012, .002, .22, .03, 3),
+    ("broadcast", "Broadcast — for the ear", "Written to be heard once: short sentences, one fact each, the subject repeated rather than a pronoun.", 12, 4, .40, .00, 4.3, .06, .004, .010, .02, .015, .001, .04, .00, 2),
+    ("blog", "Blog post", "Useful and informal: you, short paragraphs, subheads, a clear takeaway under each.", 14, 7, .30, .05, 4.3, .07, .015, .030, .10, .025, .004, .12, .00, 3),
+    ("social-post", "Social post", "One thought, said fast: a hook, a line or two, nothing spare.", 9, 5, .60, .00, 4.2, .05, .020, .025, .15, .030, .001, .10, .00, 1),
+    ("scientific", "Scientific paper", "Method and result stated exactly: past tense for what was done, hedged claims, defined terms.", 25, 8, .04, .42, 5.6, .28, .008, .000, .00, .000, .014, .03, .10, 6),
+    ("textbook", "Textbook explanation", "From the known to the new, one step at a time: definitions, examples, we for the shared path.", 18, 6, .15, .12, 4.9, .15, .012, .010, .06, .000, .006, .05, .04, 5),
+    ("popular-science", "Popular science", "Hard ideas in everyday pictures: questions, analogies, the reader's curiosity leading.", 17, 9, .25, .12, 4.6, .11, .010, .015, .12, .012, .006, .18, .03, 4),
+    ("reference", "Reference entry", "Encyclopaedic: defining sentence first, dense with fact, no opinion, no address to the reader.", 22, 7, .06, .28, 5.3, .22, .000, .000, .00, .000, .003, .03, .10, 5),
+    ("plain-legal", "Plain legal", "Binding but readable: short sentences, must instead of shall, defined terms kept unchanged.", 18, 6, .15, .10, 4.9, .16, .004, .020, .00, .000, .001, .01, .04, 3),
+    ("official-notice", "Official notice", "An authority informing the public: impersonal, complete, dates and duties exact.", 22, 7, .05, .28, 5.2, .22, .000, .006, .00, .000, .001, .01, .08, 3),
+    ("speech", "Speech", "For a room: repetition, threes, short sentences that land, we and you.", 12, 8, .45, .04, 4.2, .06, .030, .025, .10, .015, .001, .10, .00, 3),
+    ("appeal", "Appeal — fundraising or advocacy", "One person's story, then the ask: you, urgency without exaggeration, a single clear action.", 14, 7, .32, .05, 4.3, .07, .015, .035, .08, .015, .001, .10, .00, 3),
+    ("spare", "Spare", "Fiction pared to nouns and verbs: short declaratives, little description, feeling left under the surface.", 10, 6, .55, .02, 4.0, .04, .010, .002, .03, .010, .001, .03, .00, 4),
+    ("lyrical", "Lyrical", "Long, musical sentences: image on image, rhythm carrying the feeling.", 27, 14, .12, .48, 4.6, .11, .010, .002, .03, .004, .004, .30, .25, 5),
+    ("hard-boiled", "Hard-boiled", "First person, dry and clipped: wisecracks, hard nouns, weather and trouble.", 12, 7, .45, .04, 4.0, .04, .045, .004, .04, .030, .002, .12, .00, 4),
+    ("atmospheric", "Atmospheric — gothic", "Dread built slowly: long winding sentences, old houses and weather, the unsaid.", 26, 12, .10, .45, 4.8, .14, .020, .000, .03, .000, .010, .25, .30, 5),
+    ("wry", "Wry — comic", "A straight face and a raised eyebrow: understatement, asides, the long setup and the short drop.", 18, 12, .28, .18, 4.5, .10, .020, .010, .06, .015, .006, .30, .05, 4),
+    ("young-children", "For young children", "Read aloud to the very young: tiny sentences, repetition, sound and pattern.", 7, 3, .80, .00, 3.8, .02, .010, .010, .12, .010, .000, .02, .00, 2),
+    ("young-adult", "Young adult voice", "Close and immediate: first person, present feeling, quick paragraphs, talk that sounds like talk.", 12, 8, .42, .05, 4.1, .05, .050, .008, .10, .035, .004, .18, .00, 3),
+    ("epic", "Epic — high fantasy", "Grand and measured: long cadenced sentences, names and places, no contractions.", 24, 10, .10, .40, 4.7, .12, .004, .000, .02, .000, .001, .10, .22, 5),
+    ("reflective-memoir", "Reflective memoir", "Then and now in one voice: I, remembered detail, the thought that came later.", 19, 11, .22, .22, 4.4, .08, .050, .002, .05, .012, .010, .20, .08, 5),
+    ("thriller", "Thriller pace", "Short chapters, short paragraphs, short sentences when it counts; every scene ends open.", 10, 7, .55, .03, 4.2, .05, .010, .002, .06, .015, .001, .10, .00, 2),
 ]
+
+# what kind of template each is, and what it is good for (shown in the Style library)
+STYLE_GROUPS = [
+    ("Everyday", {"plain": "letters, notices, anything for a general reader", "conversational": "emails, help pages, friendly explanations",
+                  "warm": "thanks, condolences, personal letters", "friendly-note": "quick messages to people you know",
+                  "public-plain": "public information, forms, signs, service pages"}),
+    ("Business", {"executive": "summaries, board papers, recommendations", "neutral-report": "progress and incident reports, audits",
+                  "customer-care": "replies to customers, service updates, apologies", "press-release": "announcements to the media",
+                  "newsletter": "regular updates to members or staff", "minutes": "meeting records, action lists"}),
+    ("News and media", {"journalistic": "news reports, briefings", "magazine-feature": "features, profiles, long reads", "opinion-column": "op-eds, columns, reviews",
+                        "broadcast": "radio and video scripts, announcements read aloud", "blog": "how-to posts, explainers on the web",
+                        "social-post": "posts, captions, short announcements"}),
+    ("Academic and technical", {"academic": "essays, dissertations, literature reviews", "scientific": "papers, lab reports, abstracts",
+                                "textbook": "lessons, course notes, study guides", "popular-science": "science for general readers",
+                                "reference": "encyclopaedia and glossary entries", "technical": "specifications, documentation",
+                                "instructional": "procedures, manuals, recipes"}),
+    ("Legal and official", {"formal": "official letters, policies, formal reports", "legal-formal": "contracts, pleadings — a draft for a qualified lawyer",
+                            "plain-legal": "terms and policies people must actually read — a draft for a qualified lawyer",
+                            "official-notice": "notices from an authority, regulations in summary"}),
+    ("Persuasion", {"persuasive": "proposals, sales pages, cover letters", "speech": "talks, toasts, addresses", "appeal": "fundraising letters, campaigns"}),
+    ("Storytelling", {"storyteller": "stories, anecdotes, narrative non-fiction", "spare": "literary short fiction", "lyrical": "literary fiction, nature writing",
+                      "hard-boiled": "crime, detective stories", "atmospheric": "gothic, ghost stories, horror", "wry": "comic fiction, humorous essays",
+                      "young-children": "picture books, bedtime stories", "young-adult": "teen fiction", "epic": "fantasy, myth, legend",
+                      "reflective-memoir": "memoir, personal essays", "thriller": "thrillers, suspense"}),
+]
+STYLE_GROUP = {sid: (g, use) for g, rows in STYLE_GROUPS for sid, use in rows.items()}
+assert sorted(STYLE_GROUP) == sorted(r[0] for r in STYLES), set(r[0] for r in STYLES) ^ set(STYLE_GROUP)
 
 # ---------------------------------------------------------------------------------------------- sources to learn from, once
 # The user's decisions: "All sources - we will eventually use 100s of sources to learn; only once", and "Find the top 10
@@ -508,6 +567,14 @@ STYLES = [
 # page when it is learned from, never from memory.
 # (id, name, wave, families, address or "")
 SOURCES = [
+    ("openlearn-fiction", "The Open University (OpenLearn) — Start writing fiction", 7, "fiction books",
+     "https://www.open.edu/openlearn/history-the-arts/creative-writing/start-writing-fiction/content-section-0"),
+    ("mit-ocw-writing", "MIT OpenCourseWare — writing courses", 7, "academic fiction", "https://openlearning.mit.edu/news/fuel-your-passion-storytelling-16-free-online-courses-mit"),
+    ("reedsy-learning", "Reedsy Learning — Novel Writing 101", 7, "fiction books", "https://reedsy.com/learning/courses/writing/free-novel-writing-course"),
+    ("quill", "Quill.org — writing and grammar tools", 7, "learning", "https://www.quill.org/"),
+    ("write-improve", "Write & Improve with Cambridge", 7, "learning academic", "https://writeandimprove.com/"),
+    ("class-central", "Class Central — free writing courses list", 7, "academic", "https://www.classcentral.com/report/writing-free-online-courses/"),
+    ("coursera-writing", "Coursera — writing courses (audit needs an account)", 7, "academic fiction", "https://www.coursera.org/courses?query=free&skills=Writing"),
     ("purdue-owl", "Purdue Online Writing Lab", 1, "academic business technical", ""), ("unc", "UNC Writing Center", 1, "academic", ""),
     ("monash", "Monash — Excel at Writing", 1, "academic business", ""), ("uw-madison", "UW–Madison Writer's Handbook", 1, "academic", ""),
     ("georgetown-law", "Georgetown Law Writing Center — guides and handouts", 1, "legal",
@@ -543,7 +610,7 @@ SOURCES = [
     ("uk-opc", "UK Office of the Parliamentary Counsel — drafting guidance", 6, "legal", "https://www.gov.uk/government/collections/the-office-of-the-parliamentary-counsel-guidance"),
     ("us-courts-drafting", "U.S. Courts — essentials for drafting clear legal rules", 6, "legal", "https://www.uscourts.gov/node/62078/"),
 ]
-WAVES = {1: "Broad base", 2: "Technical and business", 3: "Academic depth", 4: "Journalism", 5: "Fiction and dramatic", 6: "Legal — the ten"}
+WAVES = {1: "Broad base", 2: "Technical and business", 3: "Academic depth", 4: "Journalism", 5: "Fiction and dramatic", 6: "Legal — the ten", 7: "Courses and platforms the user named (2026-11-14)"}
 
 
 def build():
@@ -569,7 +636,10 @@ def build():
                        "provenance": {"status": STATUS, "sources": [], "variants": []}})
     feats = ("sentence_words", "sentence_spread", "short_sentences", "long_sentences", "word_letters", "long_words", "first_person",
              "second_person", "questions", "contractions", "hedges", "dashes", "semicolons", "paragraph_sentences")
-    styles = [{"id": r[0], "name": r[1], "about": r[2], "by": "QueryBook", "profile": dict(zip(feats, r[3:]))} for r in STYLES]
+    styles = [{"id": r[0], "name": r[1], "about": r[2], "by": "QueryBook", "group": STYLE_GROUP[r[0]][0], "for": STYLE_GROUP[r[0]][1],
+               "profile": dict(zip(feats, r[3:]))} for r in STYLES]
+    order = [g for g, _rows in STYLE_GROUPS]
+    styles.sort(key=lambda s_: order.index(s_["group"]))    # the library reads by kind
     sources = [{"id": i, "name": n, "wave": w, "wave_name": WAVES[w], "families": fam.split(), "url": u, "status": "listed — not yet learned from",
                 "licence": "to be recorded from the site's own page when it is learned from"} for i, n, w, fam, u in SOURCES]
     doc = {"version": "genres-0.2", "status": STATUS,

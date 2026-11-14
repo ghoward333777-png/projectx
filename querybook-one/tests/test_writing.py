@@ -165,7 +165,7 @@ class MachineTest(unittest.TestCase):
 
     def test_no_genre_named_is_asked_for_not_guessed(self):
         r = self.a.run({"task": "write.doc", "text": "something about dogs", "option": ""})
-        self.assertIn("What kind of document", r["text"])
+        self.assertIn("What type of document", r["text"])
 
     def test_a_weak_draft_is_sent_back_once_and_the_result_is_judged(self):
         calls = []
@@ -244,6 +244,11 @@ class MachineTest(unittest.TestCase):
         self.assertTrue(any("lose everything" in f for f in part["stakes"]["found"]))
         self.assertTrue(part["opening"]["found"])                                              # starts with the morning routine
         self.assertTrue(any("stacked" in f for f in part["overwriting"]["found"]))
+        rest = "The harbour was quiet. " * 80 + "She went home and fell asleep."
+        ra = {p["habit"]: p for p in W.fiction_audit(rest)["parts"]}
+        self.assertTrue(ra["coming event"]["found"])                                           # nothing is coming
+        self.assertTrue(any("ends at rest" in f for f in ra["chapter endings"]["found"]))      # no reason to turn the page
+        self.assertIn("Planted things", W.fiction_audit(rest)["for_the_writer"][0])            # a payoff is the writer's to trace
         good = ("“You sold it.”\n\n“Mara—”\n\n“Dad's boat. You sold Dad's boat.” She didn't sit. Tom kept his eyes on the receipt, the one "
                 "thing on the table between them, and she knew before he opened his mouth that the money was already gone.\n\n“Friday,” he said. "
                 "“They take the house Friday.”")
@@ -253,6 +258,97 @@ class MachineTest(unittest.TestCase):
         self.assertNotIn("VOICE:", story)
         r = self.a.run({"task": "write.story_check", "text": bad, "ai": False})
         self.assertIn("STORY CHECK", r["text"])
+
+    def test_an_essay_is_read_for_the_five_structural_elements(self):
+        weak = ("Thoughts\n\nSince the dawn of time, people have written essays. Writing is an activity with a long past. Many kinds of writing "
+                "exist in the world.\n\nBridges are built of steel. Steel is strong. Some bridges are old. Rivers run under bridges.\n\n"
+                "Cats sleep most of the day. They hunt at night. Many homes keep cats. Dogs are different animals.\n\n"
+                "Markets open in the morning. Traders arrive early. Prices move during the day. Lunch is at noon.\n\n"
+                "In conclusion, essays, bridges, cats and markets were discussed.")
+        a = W.essay_audit(weak)
+        part = {p["element"]: p for p in a["parts"]}
+        self.assertEqual([p["element"] for p in a["parts"]], list(W.ESSAY_ELEMENTS))
+        self.assertTrue(any("label" in f for f in part["title"]["found"]))
+        self.assertTrue(any("school" in f for f in part["introduction"]["found"]))
+        self.assertTrue(part["key terms"]["found"])
+        self.assertTrue(any("announces a summary" in f for f in part["conclusion"]["found"]))
+        good = ("Why do careful audits make hospitals less safe?\n\nHospitals audit hand hygiene to protect patients, but the wards with the best audit "
+                "scores often have the worst infection rates. The puzzle is why. This essay argues that the audit itself changes what staff do when "
+                "the auditor is watching.\n\nAn audit measures what the auditor can see. On an audited ward, staff wash at the door, where the auditor "
+                "stands. The audit records a wash. It does not record the bedside, where infection passes between patients.\n\nThe audit score "
+                "therefore rewards the visible wash. Staff learn what the audit counts. Hygiene at the bedside, which no audit sees, gets less "
+                "attention because the audit has moved it out of view.\n\nSo the problem is not that hospitals audit too little. A hospital that "
+                "wants safer patients should change what the audit can see, and the same question applies to any score that watches the door instead "
+                "of the bedside.")
+        g = W.essay_audit(good)
+        self.assertTrue(g["passed"], W.essay_text(g))
+        self.assertIn("audit", g["terms"])
+        brief = W.writer_brief(W.blueprint(LIB["genres"]["essay"], "An essay on audits"))
+        self.assertIn("STRUCTURE: Introduction: do not go from general to specific", brief)
+        self.assertNotIn("STRUCTURE:", W.writer_brief(W.blueprint(LIB["genres"]["memo"], "A memo")))
+
+    def test_the_style_library_is_grouped_and_every_template_can_brief_a_writer(self):
+        cat = self.a.catalogue() if hasattr(self.a, "catalogue") else None
+        styles = list(LIB["styles"].values())
+        self.assertGreaterEqual(len(styles), 40)
+        groups = {s["group"] for s in styles}
+        self.assertEqual(groups, {"Everyday", "Business", "News and media", "Academic and technical", "Legal and official", "Persuasion", "Storytelling"})
+        for s in styles:
+            self.assertTrue(s["for"] and s["about"])
+            self.assertIn("Sentences average", W.style_brief(s))
+        r = self.a.run({"task": "write.doc", "text": "A memo to the warehouse team: finish the stock count by Friday", "option": "memo", "style": "broadcast", "ai": False})
+        self.assertEqual(r["style"], "broadcast")
+        self.assertIn("Broadcast", W.writer_brief(r["blueprint"]))
+
+    def test_the_document_type_is_asked_for_and_planned_from_its_own_parts(self):
+        self.assertEqual(subprocess.run([sys.executable, os.path.join(ROOT, "tools", "build_doctypes.py"), "--check"]).returncode, 0)
+        dt = self.a.doctypes()
+        self.assertEqual(len(dt["domains"]), 45)
+        self.assertGreater(len(dt["types"]), 900)
+        self.assertEqual(len(dt["purposes"]), 20)
+        ask = self.a.run({"task": "write.doc", "text": "Something about the harbour", "ai": False})
+        self.assertTrue(ask["ask_type"])                                                     # no type: asked, never guessed
+        by_name = {(t["domain_n"], t["name"]): t for t in dt["types"].values()}
+        pitch = by_name[(25, "Investor pitch deck/document")]
+        r = self.a.run({"task": "write.doc", "text": "A pitch for a harbour ferry company", "doctype": pitch["id"], "purpose": "Persuade", "ai": False})
+        names = [s_["section"] for s_ in r["blueprint"]["sections"]]
+        self.assertEqual(names[:4], ["Company", "Problem", "Solution", "Technology/product"])  # the list's own parts, in its order
+        self.assertEqual(names[-1], "Milestones")
+        self.assertIn("document-type list", r["record_status"])
+        motion = by_name[(17, "Motion to dismiss")]
+        m = self.a.run({"task": "write.doc", "text": "Dismiss the claim for lack of jurisdiction", "doctype": motion["id"], "ai": False})
+        self.assertTrue(any("qualified lawyer" in c for c in m["blueprint"]["constraints"]))  # legal types stay a draft for a lawyer
+        memo = by_name[(34, "Memo")]
+        self.assertEqual(self.a.run({"task": "write.doc", "text": "Stock count by Friday", "doctype": memo["id"], "ai": False})["genre"], "memo")  # full record used
+        bare = by_name[(45, "Travel itinerary")]
+        self.assertIn("general shape", self.a.run({"task": "write.doc", "text": "Lisbon in May", "doctype": bare["id"], "ai": False})["record_status"])
+
+    def test_a_document_is_analysed_and_its_voice_becomes_the_writers_controls(self):
+        letter = ("Dear Mrs Okafor,\n\nThank you so much for the lovely afternoon — we're still talking about your garden. I hope you don't mind, but "
+                  "I've told half the street about the plum cake. We'd love to have you over when the weather's kind.\n\nWith warm wishes,\nJo")
+        a = W.analyze_document(letter, self.a.doctypes(), self.a.styles())
+        self.assertEqual(a["person"].split(" — ")[0], "first person")
+        self.assertIn(a["formality"], ("casual", "informal"))
+        self.assertIn("warm", a["tones"])
+        self.assertEqual(a["controls"]["contractions"], "yes")
+        report = ("# Audit report\n\n## Scope\nThe audit covered stores.\n\n## Standards/criteria\nThe criteria were set by policy.\n\n## Testing\n"
+                  "Samples were tested.\n\n## Findings\nThree exceptions were found.\n\n## Exceptions\nTwo were recorded.\n\n## Conclusions/opinion\nControls are adequate.")
+        r = W.analyze_document(report, self.a.doctypes(), self.a.styles())
+        self.assertEqual(r["likely_types"][0]["name"], "Audit report")                       # recognised by its expected parts
+        self.assertEqual(r["person"], "third person")
+        none = W.analyze_document("Rain. More rain.", self.a.doctypes(), self.a.styles())
+        self.assertEqual(none["likely_types"], [])                                             # cannot tell: says so
+        self.assertIn("cannot tell", W.analysis_text(none))
+        ctl = W.controls_brief({"tone": "warm", "person": "first person — we", "contractions": "yes", "words": "300", "formality": "nonsense"})
+        self.assertEqual(len(ctl), 4)                                                          # an unknown setting is ignored
+        chk = {x["control"]: x for x in W.controls_check(letter, {"person": "third person", "contractions": "yes", "words": 60})}
+        self.assertFalse(chk["Point of view"]["ok"])
+        self.assertTrue(chk["Contractions"]["ok"])
+        p = self.a.run({"task": "write.doc", "text": "A memo to the warehouse team: finish the stock count by Friday", "option": "memo",
+                        "controls": {"tone": "urgent", "person": "second person — you"}, "ai": False})
+        self.assertIn("Tone: urgent", p["text"])
+        an = self.a.run({"task": "write.analyze", "text": letter, "ai": False})
+        self.assertIn("HOW IT SOUNDS", an["text"])
 
     def test_check_a_draft_needs_no_ai(self):
         r = self.a.run({"task": "write.check", "text": MEMO, "option": "memo"})

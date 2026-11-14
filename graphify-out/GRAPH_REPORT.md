@@ -1,26 +1,26 @@
 # Graph Report - projectx  (2026-11-14)
 
 ## Corpus Check
-- 323 files · ~872,889 words
+- 325 files · ~906,053 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 490 file(s) not represented in the graph (top: (none) 447, .lean 12, .command 9)
-- WARNING: 490 of 865 files seen (57%) have no supported extractor and are missing from this graph entirely. It may look complete while representing only part of the codebase.
+- WARNING: 490 of 868 files seen (56%) have no supported extractor and are missing from this graph entirely. It may look complete while representing only part of the codebase.
 
 ## Summary
-- 7155 nodes · 16419 edges · 276 communities (180 shown, 96 thin omitted)
-- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 715 edges (avg confidence: 0.86)
+- 7189 nodes · 16499 edges · 303 communities (202 shown, 101 thin omitted)
+- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 714 edges (avg confidence: 0.86)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `3cb8bfb2`
+- Built from commit: `3871460a`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - QB1 Language — HTTP routes (app.py)
 - QB1 Rust port — STEM formulas (formulas.rs)
-- qbharvest.py
-- QB1 Hybrid video renderer & frame tools
+- subprocess
+- reuse_bench.py
 - qbfarm.py
 - QB1 Data-drive bring-over (qbdrive) & harvest watch
 - _persona_selftest
@@ -33,8 +33,8 @@
 - QB1 Control Panel UI (app.js)
 - QB1 Farm out — remote harvester packages & sealed import
 - QB1 TTS — espeak engine
-- Engine
-- QB1 Bulk harvest — supervisor, shards, dataset runs
+- _http
+- os
 - _supervisor_tests
 - QB1 Speech Lab — generate, overdub, ingest
 - ._routes
@@ -43,7 +43,7 @@
 - QB1 Vault — backups & generations
 - QB1 Bulk harvest — Wikidata lattice (ranged reads)
 - qbbulk.py
-- commons_folder
+- keep_alive
 - QB1 Talking clips — Gemini/HeyGen lip-sync
 - QB1 Voice DSP — WAV measure & effects
 - QB1 Engineer — self-analysis & approved fixes
@@ -55,7 +55,7 @@
 - QB1 Ask modes & answer formats (modes.py)
 - QB1 STEM calculation engine
 - QB1 Bulk harvest — slots, merge slots, small datasets
-- CI — QueryBook Next workflow
+- re
 - QB1 Lip reading analysis
 - AskUnderstandingTest
 - QB1 Bulk harvest — dataset catalogue (Taxonomy, GNIS, FoodData…)
@@ -66,10 +66,10 @@
 - QB1 Book Harvester — Gutenberg, Internet Archive, by address
 - QB1 Language Lab pipeline (lab.py)
 - QB Next — legacy store reader (D:\QB, read-only)
-- QB1 Photo Real Lab
+- find_facts.py
 - QB1 Book Query — retrieval & answers (bookq)
 - QB1 Bulk harvest — routes, autostart, plain reports
-- visemes.py
+- lipcoach.py
 - QB1 Answer videos
 - QB Next — app & server tests
 - evaluator.py
@@ -83,11 +83,11 @@
 - QB Next Rust — contracts & store types
 - ._science_read
 - lab_core.py
-- QB1 Devices hub — sensor ingest (ARKit, BVH, Pupil)
+- ._routes
 - qbconnections.py
 - hashlib
-- WikidataLattice
-- ._routes
+- Dataset
+- Google
 - QB1 Commons — shared facts & fingerprints
 - QB1 API connections & key checks
 - QB1 Core store, logging & redaction
@@ -95,19 +95,19 @@
 - QB1 Synapse network memory
 - QB1 Visemes — phoneme timing
 - QB1 Language Lab UI (lablang.js)
-- QB1 Trace & library build tool
+- zipfile
 - qbcore.py
 - Assist
 - QB1 Harvest campaigns
 - Node
-- build_bibles.py
+- ._routes
 - QB1 Device bridges (iPhone ARKit, Meta glasses)
 - QB1 STEM harvest adapter
 - Book Studio — IllustrationStudio
 - QB1 Commons harvest routes & control
 - QB1 Devices — LAN & routes
 - QB1 Author personas (narrator)
-- engine.js
+- lexicon.js
 - QB1 qbmath — pure network-memory formulas
 - FQLError
 - QB1 Commons teams & cycles
@@ -128,7 +128,7 @@
 - QB1 Translate — pronunciation (g2p)
 - Tests — QB1 Rust compatibility
 - QB1 Suite packager (package.py)
-- Lab
+- visemes.py
 - QB1 Dump downloader
 - QB1 STEM units
 - cli.py
@@ -137,7 +137,7 @@
 - QB1 Book Query — Fact Unit assembly
 - config.py
 - QB1 Dump self-test & editions
-- qbkeystone.py
+- answer
 - QB1 Photo Real UI
 - QB1 Book Query page (bookquery.js)
 - QB1 STEM UI
@@ -151,17 +151,17 @@
 - google_tests
 - QB1 Google settings
 - QB1 Agents — SKILL.md frontmatter
-- _http
+- talkclip.py
 - QB1 History UI
 - Studio
 - _supervisor_tests
 - QB Next — FQL AST
 - QB1 Tracer
-- _req
+- qbnews.py
 - QB1 Rust generator (gen_rust)
 - QB1 Control Panel startup
 - QB1 Book Harvester — background job & catalog
-- studio.py
+- .__init__
 - Book Studio — AudiobookProducer
 - mt.js
 - QB1 Language Lab text
@@ -170,7 +170,7 @@
 - Book Studio — WordManuscriptExporter
 - FoodData
 - render
-- parse_skill
+- qbagents.py
 - QB1 Core CLI & power checks
 - QB1 Online harvesters — Wikidata sets
 - QB Next — FQL references & sets
@@ -179,7 +179,7 @@
 - plan
 - AppsTest
 - speech_probe.py
-- answer
+- .__init__
 - QB1 Talking clips — Gemini/HeyGen lip-sync
 - QB1 Video Studio renderer
 - CI — QueryBook one jobs
@@ -194,34 +194,35 @@
 - CI — Windows bundle & farm jobs
 - FQLTest
 - QB1 Control Panel self-test
-- ._face
+- ._run_alone
 - QB1 Video Studio — Language client
 - QB1 Pronunciation — heteronym decisions
 - QB1 Rust — degree trig formulas
 - Book Studio — develop-manuscript CLI
 - CI — suite matrix
 - QB1 Artifact extraction
-- QB Next — FQL errors & tokens
+- qbframes.py
 - Tests — QB Next Rust compatibility
 - QB1 Commons adapters & budgets
 - Tools — speech probe
-- package.py
-- build_pyz.py
+- hybrid_video.py
+- qbcompose.py
 - test_agents.py
 - QB1 Dialects
 - Book Studio — ManuscriptHygiene
-- Rust CLI entry
+- _wd_item
 - GenreLibraryTest
 - QB1 Talking clips — budget
-- _ctx
-- Tests — QB Next single-file build
+- Engine
+- test_engineer.py
 - QB1 ROS 2 bridge
 - Settings
 - Book Studio — illustration subjects
+- Corpus
 - QB1 Book Harvester — HTML to text
 - QB1 Trace timing
-- sw.js
-- Tests — core HTTP stand-in
+- renderEssentials
+- render
 - Book Studio — SitePackageExporter
 - .last_verification
 - CI — Rust job
@@ -236,18 +237,31 @@
 - CI — Windows harvest job
 - QB1 Ask modes — topic & answer format
 - QB1 Online harvesters — Wikidata search
+- parse
 - QB1 AI usage UI
 - QB1 API documentation
+- facts/sources.py
 - core/__init__.py
 - amazon-book-writer-contract.php
+- silent.py
 - hygiene-contract.php
+- wire
 - the clean text, carrying its pronunciation decisions to the engine that will…
 - qbcore/src/lib.rs
 - querybook-one/tests/__init__.py
+- gen_lean.py
+- App
 - QB1 Translate — service worker
 - Language
+- Jobs
 - assistant.py
-- run
+- .transcribe_long
+- .start_lan
+- .add_fact
+- plan
+- Budget
+- boot
+- packs.js
 - KnownForTest
 - CoordinationTest
 - MentionMatchTest
@@ -257,17 +271,31 @@
 - Bridge
 - atomize
 - querybook-next/tests/test_rust_compat.py
+- .update_fact
+- ._cloud_keys
+- Library
 - RulesTest
-- diagnostics
-- WikidataSeed
+- build_doctypes.py
+- pitch_tempo
+- Store
+- _wikidata
+- Checks
+- published_md5
+- .promote
+- langLabel
+- keep_units
+- StandIn
+- PeriodTest
+- SourceBusy
 - _NoNetwork
+- ._talk_face
 
 ## God Nodes (most connected - your core abstractions)
 1. `self_test()` - 142 edges
 2. `call()` - 112 edges
 3. `UserError` - 86 edges
 4. `_supervisor_tests()` - 75 edges
-5. `f()` - 70 edges
+5. `f()` - 69 edges
 6. `App` - 45 edges
 7. `Hub` - 45 edges
 8. `BookIntelligenceEngine` - 43 edges
@@ -291,27 +319,27 @@
 - 2-file cycle: `querybook-next/querybook/core/fql/__init__.py -> querybook-next/querybook/core/fql/evaluator.py -> querybook-next/querybook/core/fql/__init__.py`
 - 3-file cycle: `querybook-next/querybook/core/fql/__init__.py -> querybook-next/querybook/core/fql/evaluator.py -> querybook-next/querybook/core/fql/parser.py -> querybook-next/querybook/core/fql/__init__.py`
 
-## Communities (276 total, 96 thin omitted)
+## Communities (303 total, 101 thin omitted)
 
 ### Community 0 - "QB1 Language — HTTP routes (app.py)"
 Cohesion: 0.02
-Nodes (42): answer(), _audio(), _gen_args(), get_native(), lablang_cloudtr(), lablang_hear(), lablang_languages(), lc_mouth() (+34 more)
+Nodes (28): answer(), _audio(), _gen_args(), lablang_hear(), lc_mouth(), lc_teach(), _logged(), pe_create() (+20 more)
 
 ### Community 1 - "QB1 Rust port — STEM formulas (formulas.rs)"
 Cohesion: 0.04
 Nodes (104): call(), cap_energy_Cap(), cap_energy_E(), cap_energy_V(), circle_A(), circle_r(), coulomb_Fc(), coulomb_q1() (+96 more)
 
-### Community 2 - "qbharvest.py"
-Cohesion: 0.09
-Nodes (9): token(), HarvestLog, _hash(), db(), main(), one_world(), run_app(), snapshot() (+1 more)
+### Community 2 - "subprocess"
+Cohesion: 0.08
+Nodes (15): db(), main(), one_world(), run_app(), snapshot(), control(), _FakeLanguage, _ff() (+7 more)
 
-### Community 3 - "QB1 Hybrid video renderer & frame tools"
-Cohesion: 0.04
-Nodes (58): _seg_media(), _concat(), _edit(), gemini_generator(), import_bench(), _join(), _join_bridged(), Library (+50 more)
+### Community 3 - "reuse_bench.py"
+Cohesion: 0.18
+Nodes (13): import_bench(), Bench, check(), _corr(), duration(), main(), motion_curve(), report() (+5 more)
 
 ### Community 4 - "qbfarm.py"
 Cohesion: 0.05
-Nodes (41): _b64u(), decode_setup_code(), _der(), _der_seq(), _key_works(), parse_private_key(), prog(), rs256() (+33 more)
+Nodes (43): _b64u(), decode_setup_code(), _der(), _der_seq(), _key_works(), parse_private_key(), prog(), rs256() (+35 more)
 
 ### Community 5 - "QB1 Data-drive bring-over (qbdrive) & harvest watch"
 Cohesion: 0.06
@@ -322,12 +350,12 @@ Cohesion: 0.38
 Nodes (4): _persona_selftest(), do_GET(), do_POST(), _send()
 
 ### Community 7 - "qbonline.py"
-Cohesion: 0.07
-Nodes (53): h_key(), _battles(), _compounds(), _countries(), _dpla(), enabled(), _europeana(), _fdc() (+45 more)
+Cohesion: 0.14
+Nodes (23): h_key(), _dpla(), enabled(), _europeana(), _fdc(), _federal_register(), _first(), _frus() (+15 more)
 
 ### Community 8 - "QB1 Online harvesters (DPLA, Europeana, FDC…)"
 Cohesion: 0.07
-Nodes (25): DomainApp, fql_str(), QueryContext, source_ref(), era_of(), find_years(), HistoryApp, parse_range() (+17 more)
+Nodes (27): DomainApp, fql_str(), QueryContext, source_ref(), era_of(), find_years(), HistoryApp, parse_range() (+19 more)
 
 ### Community 9 - "QB1 Shared UI helpers (qb.js)"
 Cohesion: 0.08
@@ -338,52 +366,52 @@ Cohesion: 0.06
 Nodes (63): SC, sc_iou(), scAsk(), scClick(), scDetector(), scDraw(), scKeep(), scLiveList() (+55 more)
 
 ### Community 11 - "src/app.js"
-Cohesion: 0.12
-Nodes (59): activate(), addTurn(), app, applyTheme(), boot(), checkOnDeviceAsr(), copy(), coverageLevel() (+51 more)
+Cohesion: 0.16
+Nodes (21): app, copy(), coverageLevel(), DEFAULT_SETTINGS, ESSENTIALS, h(), log(), nativeShell (+13 more)
 
 ### Community 12 - "QB1 Visual Speech Engine — lip sync & lip reading"
 Cohesion: 0.07
 Nodes (62): askSelf(), bind(), bindDismiss(), BK_STATE, bkDownload(), bkDownloadSave(), chatMsg(), checks() (+54 more)
 
 ### Community 13 - "QB1 Control Panel UI (app.js)"
-Cohesion: 0.05
-Nodes (40): _vse_selftest(), align_script(), aps(), arkit52(), _as_tracker(), _bench_real(), benchmark(), best_class() (+32 more)
+Cohesion: 0.06
+Nodes (34): _vse_selftest(), align_script(), aps(), arkit52(), _as_tracker(), _bench_real(), benchmark(), best_class() (+26 more)
 
 ### Community 14 - "QB1 Farm out — remote harvester packages & sealed import"
 Cohesion: 0.07
 Nodes (61): clock(), curveSvg(), day(), fmt(), loadData(), loadVerify(), lookup(), meter() (+53 more)
 
 ### Community 15 - "QB1 TTS — espeak engine"
-Cohesion: 0.08
-Nodes (27): active_lexicon(), arpa_to_apple(), arpa_to_espeak(), arpa_to_ipa(), arpa_to_respell(), benchmark(), _cap(), _case() (+19 more)
+Cohesion: 0.07
+Nodes (28): pr_bench(), arpa_to_apple(), arpa_to_espeak(), arpa_to_ipa(), arpa_to_respell(), benchmark(), _cap(), _case() (+20 more)
 
-### Community 16 - "Engine"
-Cohesion: 0.09
-Nodes (8): Azure, ElevenLabs, Engine, Formant, GoogleCloud, Polly, Sapi, scrub()
+### Community 16 - "_http"
+Cohesion: 0.15
+Nodes (12): body(), run(), ElevenLabs, run(), GoogleCloud, run(), run(), _http() (+4 more)
 
-### Community 17 - "QB1 Bulk harvest — supervisor, shards, dataset runs"
-Cohesion: 0.08
-Nodes (21): register(), bring_over(), log(), _busy(), commons_in(), _copy_db(), _copy_file(), _db_safe() (+13 more)
+### Community 17 - "os"
+Cohesion: 0.05
+Nodes (50): _seg_media(), _seg_sqlite(), bring_over(), log(), _busy(), commons_in(), _copy_db(), _copy_file() (+42 more)
 
 ### Community 18 - "_supervisor_tests"
-Cohesion: 0.03
-Nodes (84): backup_restore(), bulk_restore(), _agent(), _agent_alive_info(), _agent_main(), heartbeat(), _alive(), _alive_dir() (+76 more)
+Cohesion: 0.05
+Nodes (50): bulk_diagnose(), _agent(), _agent_main(), heartbeat(), _alive_dir(), _changed_at(), _copy_progress(), _copy_stamp() (+42 more)
 
 ### Community 19 - "QB1 Speech Lab — generate, overdub, ingest"
-Cohesion: 0.10
-Nodes (7): video_event(), Clock, _slim(), SpeechLab, _usage(), profile(), is_wav()
+Cohesion: 0.08
+Nodes (10): lc_train(), sp_keys_import(), video_event(), Clock, _envelope(), _slim(), SpeechLab, _usage() (+2 more)
 
 ### Community 20 - "._routes"
-Cohesion: 0.05
-Nodes (19): App, run(), flush(), add(), add_source(), delete(), fact(), facts() (+11 more)
+Cohesion: 0.10
+Nodes (4): fact(), feed_fetch(), yt_add(), yt_search()
 
 ### Community 21 - "QB1 Scaffold facts (calendar) & History harvest"
 Cohesion: 0.04
-Nodes (49): add_routes(), analyse(), autostart_get(), autostart_set(), backup_settings(), bulk_demand(), bulk_diagnose(), bulk_download_settings() (+41 more)
+Nodes (46): add_routes(), analyse(), autostart_get(), autostart_set(), backup_now(), backup_settings(), bulk_fill_dates(), bulk_health() (+38 more)
 
 ### Community 22 - "QB1 Language verification & speech probe"
-Cohesion: 0.10
-Nodes (14): add_routes(), attach(), require_admin(), _clean(), default_folder(), kind_of(), Library, LibraryError (+6 more)
+Cohesion: 0.11
+Nodes (11): add_routes(), attach(), require_admin(), _clean(), kind_of(), Library, LibraryError, _now() (+3 more)
 
 ### Community 23 - "QB1 Vault — backups & generations"
 Cohesion: 0.13
@@ -391,131 +419,131 @@ Nodes (15): _cycles(), _db(), _downsample(), indicators(), _mean(), measure(), _
 
 ### Community 24 - "QB1 Bulk harvest — Wikidata lattice (ranged reads)"
 Cohesion: 0.06
-Nodes (18): main(), main(), main(), from_env(), main(), main(), main(), main() (+10 more)
+Nodes (20): main(), main(), main(), from_env(), main(), main(), main(), fill_slots() (+12 more)
 
 ### Community 25 - "qbbulk.py"
 Cohesion: 0.05
-Nodes (39): bulk_domains(), agents_moving(), _changed_at(), circle_status(), circle_wave(), context_read(), context_status(), context_wave() (+31 more)
+Nodes (46): bulk_entity(), bulk_suggest(), _agent_alive_info(), by_area(), circle_status(), circle_wave(), context_read(), context_status() (+38 more)
 
-### Community 26 - "commons_folder"
-Cohesion: 0.10
-Nodes (18): backup_now(), bulk_stop(), _agent_pids(), drive_probe(), go(), hard_stop(), _kill(), _pid_alive() (+10 more)
+### Community 26 - "keep_alive"
+Cohesion: 0.05
+Nodes (43): backup_restore(), bulk_demand(), bulk_restore(), bulk_start(), bulk_stop(), _agent_pids(), agents_moving(), _alive() (+35 more)
 
 ### Community 27 - "QB1 Talking clips — Gemini/HeyGen lip-sync"
-Cohesion: 0.11
+Cohesion: 0.10
 Nodes (17): date_facts(), _delta_t(), easter_orthodox(), easter_western(), editions(), election_day(), expected_years(), is_leap() (+9 more)
 
 ### Community 28 - "QB1 Voice DSP — WAV measure & effects"
-Cohesion: 0.07
-Nodes (12): dataset_app(), fingerprint(), LegacyStore, norm(), _ro(), shard_fp(), ShardInfo, work_dir() (+4 more)
+Cohesion: 0.10
+Nodes (6): dataset_app(), LegacyStore, norm(), _ro(), ShardInfo, work_dir()
 
 ### Community 29 - "QB1 Engineer — self-analysis & approved fixes"
 Cohesion: 0.08
-Nodes (23): lablang_deck(), lookup(), bundle_missing(), LanguageAdapter, term(), translation(), _meaning(), _subject() (+15 more)
+Nodes (23): lablang_deck(), lookup(), vendor_missing(), LanguageAdapter, term(), translation(), _meaning(), _subject() (+15 more)
 
 ### Community 30 - "QB1 Exemplar library"
-Cohesion: 0.06
-Nodes (38): answer(), ask_model(), claude_json(), evidence_text(), gather(), gemini_json(), load_keys(), _post() (+30 more)
+Cohesion: 0.07
+Nodes (33): qc(), self_test(), _post(), _reason(), say(), ApiError, _app(), _call() (+25 more)
 
 ### Community 31 - "QB Next — FQL evaluator"
 Cohesion: 0.11
-Nodes (45): _abs(), Approx, _approx(), _binop(), CalcError, _cbrt(), _ceil(), _comb() (+37 more)
+Nodes (42): _abs(), Approx, _approx(), _binop(), CalcError, _cbrt(), _ceil(), _comb() (+34 more)
 
 ### Community 32 - "QB1 Pronunciation — heteronyms & lexicon"
-Cohesion: 0.07
-Nodes (13): Source, IngestResult, RawItem, now_us(), Harvester, SourceState, IngestPipeline, FeedSource (+5 more)
+Cohesion: 0.08
+Nodes (10): IngestResult, RawItem, Harvester, SourceState, IngestPipeline, FeedSource, FolderSource, item_from_obj() (+2 more)
 
 ### Community 33 - "QB1 History & News app"
-Cohesion: 0.06
-Nodes (34): si_read(), fit(), learn_costs(), analyse(), authenticity(), av_sync(), classes_of(), _cost() (+26 more)
+Cohesion: 0.08
+Nodes (25): analyse(), authenticity(), av_sync(), classes_of(), _cost(), decode(), dtw(), expression() (+17 more)
 
 ### Community 34 - "QB1 espeak speech & coach"
 Cohesion: 0.03
-Nodes (33): by_area(), Calendar, catalog(), _Count, Dataset, DOMAIN_QUERY(), ENTITY_FETCH(), entitydata_entities() (+25 more)
+Nodes (35): bulk_coverage(), bulk_domains(), catalog(), DOMAIN_QUERY(), domains_report(), dump_coverage(), dump_positions_read(), edition_progress() (+27 more)
 
 ### Community 35 - "QB1 Ask modes & answer formats (modes.py)"
 Cohesion: 0.06
 Nodes (45): run, jobs, lean, python, rust, windows-bundle, defaults, name (+37 more)
 
 ### Community 36 - "QB1 STEM calculation engine"
-Cohesion: 0.07
-Nodes (9): DocumentStore, DomainApp, ChangeEvent, Document, canonical_json(), doc_title(), FQLStore, _fts_body() (+1 more)
+Cohesion: 0.06
+Nodes (14): DocumentStore, DomainApp, Source, ChangeEvent, Document, canonical_json(), doc_title(), FQLStore (+6 more)
 
 ### Community 37 - "QB1 Bulk harvest — slots, merge slots, small datasets"
-Cohesion: 0.09
-Nodes (4): on_pmd(), fetch(), Hub, _now()
+Cohesion: 0.07
+Nodes (10): on_pmd(), classify_line(), _count_kept(), fetch(), Hub, llm_host(), _now(), parse_agent() (+2 more)
 
-### Community 38 - "CI — QueryBook Next workflow"
-Cohesion: 0.08
-Nodes (30): add_routes(), g_start(), g_status(), _allowed(), ask_anthropic(), ask_gemini(), ask_openai(), ask_perplexity() (+22 more)
+### Community 38 - "re"
+Cohesion: 0.04
+Nodes (47): Finding, js_findings(), _lines(), py_findings(), todo_findings(), add_routes(), g_start(), g_status() (+39 more)
 
 ### Community 39 - "QB1 Lip reading analysis"
-Cohesion: 0.06
-Nodes (8): Budget, GeminiError, heard_share(), self_test(), refuse(), TalkClips, _words(), Keys
+Cohesion: 0.09
+Nodes (5): GeminiError, self_test(), refuse(), TalkClips, Keys
 
 ### Community 41 - "QB1 Bulk harvest — dataset catalogue (Taxonomy, GNIS, FoodData…)"
 Cohesion: 0.08
 Nodes (36): err(), errors_carry_positions(), FqlError, lexes_a_query_like_python(), SYMBOLS, Tok, Eof, Float (+28 more)
 
 ### Community 42 - "QB1 Fact gatherer (AI web-grounded facts)"
-Cohesion: 0.07
-Nodes (36): sci_compare(), sci_measure(), sci_protocol(), _betacf(), binom_sf(), calibrate(), ci95(), clip_vector() (+28 more)
+Cohesion: 0.10
+Nodes (35): sci_compare(), sci_measure(), sci_protocol(), _betacf(), binom_sf(), calibrate(), ci95(), clip_vector() (+27 more)
 
 ### Community 43 - "modes.py"
-Cohesion: 0.06
-Nodes (36): apply_want(), choose_format(), claim_subject(), clarify(), clean(), clock(), compose(), connections() (+28 more)
+Cohesion: 0.08
+Nodes (28): apply_want(), choose_format(), claim_subject(), clarify(), clean(), clock(), compose(), connections() (+20 more)
 
 ### Community 44 - "sense.py"
 Cohesion: 0.06
 Nodes (34): a_an(), answer_for(), arrange(), key(), choose(), clean(), combine(), combine_packed() (+26 more)
 
 ### Community 45 - "QB1 STEM app — science, molar mass, solve"
-Cohesion: 0.09
-Nodes (31): youtube_id(), actions(), analyze_numbers(), analyze_text(), compare(), fmt(), fold(), group_items() (+23 more)
+Cohesion: 0.08
+Nodes (32): note(), actions(), analyze_numbers(), analyze_text(), compare(), fmt(), fold(), group_items() (+24 more)
 
 ### Community 46 - "QB1 Book Harvester — Gutenberg, Internet Archive, by address"
-Cohesion: 0.12
-Nodes (15): _best_shift(), compare(), _complete(), _corr(), _f(), fit_model(), tryit(), _fit_shapes() (+7 more)
+Cohesion: 0.08
+Nodes (19): _best_shift(), compare(), _complete(), _corr(), _f(), fit_model(), tryit(), _fit_shapes() (+11 more)
 
 ### Community 47 - "QB1 Language Lab pipeline (lab.py)"
-Cohesion: 0.12
-Nodes (14): classify(), content_hash(), fnv1a64(), keywords(), load_lexicons(), normalize(), normalize_paragraphs(), normalize_ws() (+6 more)
+Cohesion: 0.11
+Nodes (11): classify(), content_hash(), keywords(), load_lexicons(), normalize(), normalize_paragraphs(), normalize_ws(), pick() (+3 more)
 
 ### Community 48 - "QB Next — legacy store reader (D:\QB, read-only)"
 Cohesion: 0.09
 Nodes (27): alias_terms(), analyze(), anchor(), answer(), on_topic(), assertion_view(), _chap_name(), chapter_in() (+19 more)
 
-### Community 49 - "QB1 Photo Real Lab"
-Cohesion: 0.10
-Nodes (32): backup(), _cfg_path(), config(), due(), _facts_of(), generations(), _is_db(), items() (+24 more)
+### Community 49 - "find_facts.py"
+Cohesion: 0.53
+Nodes (4): look(), main(), places(), ro()
 
 ### Community 50 - "QB1 Book Query — retrieval & answers (bookq)"
-Cohesion: 0.04
-Nodes (32): App, ask(), elements(), formulas(), import_old(), molar(), save(), solve() (+24 more)
+Cohesion: 0.07
+Nodes (16): App, ask(), import_old(), save(), _domain(), open_app(), selftest(), _strip_unit() (+8 more)
 
 ### Community 51 - "QB1 Bulk harvest — routes, autostart, plain reports"
-Cohesion: 0.07
-Nodes (8): fingerprint(), Engine, Learner, _now(), Registry, run(), run(), _ts()
+Cohesion: 0.06
+Nodes (9): fingerprint(), Engine, HarvestLog, Learner, _now(), Registry, run(), run() (+1 more)
 
-### Community 52 - "visemes.py"
-Cohesion: 0.05
-Nodes (28): sp_lipsync_export(), frames_for(), vendor_missing(), _viseme_selftest(), _env(), LipCoach, err(), mouth_from_features() (+20 more)
+### Community 52 - "lipcoach.py"
+Cohesion: 0.08
+Nodes (11): _env(), fit(), learn_costs(), LipCoach, err(), mouth_from_features(), _now(), _rate() (+3 more)
 
 ### Community 53 - "QB1 Answer videos"
 Cohesion: 0.06
 Nodes (40): ARAB, ARAB_VOWEL_SIGNS, arabic(), ARMN, B_CONS, B_NUKTA, B_SIGN, B_VOWEL (+32 more)
 
 ### Community 55 - "evaluator.py"
-Cohesion: 0.10
-Nodes (8): CollectionNamespace, ordered(), run_fql(), sort_key(), tokenize(), push(), parse(), LeanGuardTest
+Cohesion: 0.11
+Nodes (8): ordered(), run_fql(), sort_key(), Token, tokenize(), push(), parse(), LeanGuardTest
 
 ### Community 56 - "QB1 Translate — transliteration"
 Cohesion: 0.11
 Nodes (4): GateClosed, Lab, step(), now()
 
 ### Community 57 - "answer_videos.py"
-Cohesion: 0.10
-Nodes (24): answer_words(), best(), build(), check(), computed(), entity(), _get(), _http() (+16 more)
+Cohesion: 0.09
+Nodes (25): answer_words(), best(), build(), check(), computed(), entity(), _get(), _http() (+17 more)
 
 ### Community 58 - "QB1 Artifact ingestion — detect & segment files"
 Cohesion: 0.10
@@ -527,7 +555,7 @@ Nodes (26): _bulk(), check_networks(), compare(), dsn_search(), _folder(), healt
 
 ### Community 60 - "QB Next — legacy & Lean spec tests"
 Cohesion: 0.08
-Nodes (30): ipa(), lablang_say(), sci_detect(), sci_ipa(), sci_speak(), sci_voices(), speak(), status() (+22 more)
+Nodes (33): ipa(), lablang_say(), sci_detect(), sci_ipa(), sci_speak(), sci_voices(), sp_lipsync_export(), speak() (+25 more)
 
 ### Community 61 - "QB1 Language app — verification runs"
 Cohesion: 0.10
@@ -542,76 +570,76 @@ Cohesion: 0.12
 Nodes (21): add_routes(), answer(), _apps_root(), attach(), check(), codebase(), consistency(), describe() (+13 more)
 
 ### Community 65 - "lab_core.py"
-Cohesion: 0.08
-Nodes (18): op(), f(), _blank_model(), corpus_chunk(), _g2p(), _g2p_rules(), _ingest_into_model(), _ipa_meta() (+10 more)
+Cohesion: 0.10
+Nodes (13): _blank_model(), corpus_chunk(), _g2p(), _g2p_rules(), _ingest_into_model(), _ipa_meta(), metrics(), _prosody() (+5 more)
 
-### Community 66 - "QB1 Devices hub — sensor ingest (ARKit, BVH, Pupil)"
-Cohesion: 0.17
-Nodes (8): apply_phonology(), detect_dialect(), dialect_info(), dialects_for(), list_dialects(), normalize_lexicon(), _ph(), qc()
+### Community 66 - "._routes"
+Cohesion: 0.07
+Nodes (18): elements(), formulas(), molar(), solve(), unit_list(), _decimal_string(), describe(), _fmt_float() (+10 more)
 
 ### Community 67 - "qbconnections.py"
-Cohesion: 0.10
-Nodes (23): add_google_setup(), gs_start(), gs_status(), add_registration(), _admin(), reg_dpla(), reg_list(), reg_save() (+15 more)
+Cohesion: 0.08
+Nodes (28): add_google_setup(), gs_start(), gs_status(), add_registration(), _admin(), reg_dpla(), reg_list(), reg_save() (+20 more)
 
 ### Community 68 - "hashlib"
-Cohesion: 0.05
-Nodes (22): embed_zip(), _sha256(), _clamp(), _hkdf(), keypair(), _keystream_xor(), _keystream_xor_fast(), open_sealed() (+14 more)
+Cohesion: 0.04
+Nodes (29): _sha256(), _hash(), _clamp(), _hkdf(), keypair(), _keystream_xor(), _keystream_xor_fast(), open_sealed() (+21 more)
 
-### Community 70 - "._routes"
-Cohesion: 0.07
-Nodes (12): base(), Google, GoogleError, now_rfc3339(), _speech_results(), App, run(), info() (+4 more)
+### Community 69 - "Dataset"
+Cohesion: 0.04
+Nodes (20): cached(), Calendar, _Count, Dataset, gz_lines(), gz_member_lines(), Meter, MitOcw (+12 more)
+
+### Community 70 - "Google"
+Cohesion: 0.21
+Nodes (6): base(), Google, GoogleError, now_rfc3339(), _speech_results(), run()
 
 ### Community 71 - "QB1 Commons — shared facts & fingerprints"
 Cohesion: 0.15
 Nodes (34): LL, LL_CUR, LL_DESC, LL_FLAG, LL_SHAPE, llAnimate(), llAvatars(), llAvFollow() (+26 more)
 
 ### Community 72 - "QB1 API connections & key checks"
-Cohesion: 0.13
-Nodes (27): add_routes(), _analyse(), analyse(), attach(), audio_features(), build_profile(), feature_defs(), _fmt() (+19 more)
+Cohesion: 0.20
+Nodes (19): add_routes(), _analyse(), analyse(), attach(), audio_features(), _mean(), motion_features(), _pcm() (+11 more)
 
 ### Community 73 - "QB1 Core store, logging & redaction"
-Cohesion: 0.11
-Nodes (6): Busy, MergeSlots, Refused, Slots, _Stop, WriteSlots
+Cohesion: 0.10
+Nodes (7): Busy, HOT_FETCH(), MergeSlots, Refused, Slots, _Stop, WriteSlots
 
 ### Community 74 - "QB1 Harvest registry & engine"
 Cohesion: 0.13
 Nodes (3): _key(), Network, self_test()
 
 ### Community 75 - "QB1 Synapse network memory"
-Cohesion: 0.09
-Nodes (14): refuse(), add_diagnostics(), gcloud_alert(), gcloud_backups(), gcloud_copy(), gcloud_fetch(), gcloud_forget(), gcloud_get() (+6 more)
+Cohesion: 0.06
+Nodes (20): add_diagnostics(), gcloud_alert(), gcloud_backup_now(), run(), gcloud_backups(), gcloud_copy(), gcloud_fetch(), gcloud_forget() (+12 more)
 
 ### Community 76 - "QB1 Visemes — phoneme timing"
-Cohesion: 0.12
-Nodes (18): active(), add_routes(), quit_(), rules(), apply_filter(), check_item(), clean(), describe() (+10 more)
+Cohesion: 0.08
+Nodes (23): attach(), open_(), retry(), set_commons_folder(), active(), add_routes(), quit_(), rules() (+15 more)
 
-### Community 77 - "QB1 Language Lab UI (lablang.js)"
-Cohesion: 0.12
-Nodes (3): log(), _split_sql(), Store
-
-### Community 78 - "QB1 Trace & library build tool"
-Cohesion: 0.11
-Nodes (15): _advice(), analyze(), bench_storage(), compare_storage(), export(), _pct(), read_lines(), from_bytes() (+7 more)
+### Community 78 - "zipfile"
+Cohesion: 0.05
+Nodes (33): build(), sources(), build(), embed_zip(), _advice(), analyze(), bench_storage(), compare_storage() (+25 more)
 
 ### Community 79 - "qbcore.py"
 Cohesion: 0.03
-Nodes (41): attach(), set_commons_folder(), Checks, core_matches_master(), data_folder(), engine_watchdog(), find_old_store(), _first_run_google() (+33 more)
+Nodes (35): core_matches_master(), data_folder(), engine_watchdog(), find_old_store(), _first_run_google(), _first_run_other_keys(), free_port(), _google_siblings() (+27 more)
 
 ### Community 80 - "Assist"
-Cohesion: 0.05
-Nodes (18): Assist, Store, _subject(), check_workflow(), plan_text(), progress(), step_name(), blueprint() (+10 more)
+Cohesion: 0.06
+Nodes (16): Assist, check_workflow(), step_name(), analysis_text(), blueprint(), blueprint_text(), brief_gaps(), critique_text() (+8 more)
 
 ### Community 81 - "QB1 Harvest campaigns"
 Cohesion: 0.08
 Nodes (10): add_routes(), h_control(), h_dpla(), h_source_add(), h_status(), settings(), control_state(), harvest_control() (+2 more)
 
 ### Community 82 - "Node"
-Cohesion: 0.13
-Nodes (17): ArrayLit, Binary, FieldPath, FuncCall, Ident, Index, Lambda, Let (+9 more)
+Cohesion: 0.16
+Nodes (16): ArrayLit, Binary, FieldPath, FuncCall, Ident, Index, Lambda, Let (+8 more)
 
-### Community 83 - "build_bibles.py"
-Cohesion: 0.33
-Nodes (5): edition_text(), fetch(), main(), verses_gutenberg(), verses_vpl()
+### Community 83 - "._routes"
+Cohesion: 0.09
+Nodes (6): App, info(), project_save(), render(), settings_get(), settings_set()
 
 ### Community 84 - "QB1 Device bridges (iPhone ARKit, Meta glasses)"
 Cohesion: 0.17
@@ -626,40 +654,36 @@ Cohesion: 0.09
 Nodes (4): ARKit, Foundation, FaceSender, QueryBookSender
 
 ### Community 87 - "QB1 Commons harvest routes & control"
-Cohesion: 0.15
-Nodes (5): _label(), StemAdapter, _units(), _years_between(), _ymd()
+Cohesion: 0.13
+Nodes (6): _label(), StemAdapter, _units(), _years_between(), _ymd(), element()
 
 ### Community 89 - "QB1 Author personas (narrator)"
-Cohesion: 0.09
-Nodes (16): add_routes(), ingest(), register(), revoke(), settings(), spec(), upload(), _admin() (+8 more)
+Cohesion: 0.13
+Nodes (9): add_routes(), ingest(), register(), revoke(), settings(), upload(), _admin(), attach() (+1 more)
 
-### Community 90 - "engine.js"
-Cohesion: 0.07
-Nodes (35): asciiPunct(), CJK_PUNCT, hasRules(), foldKey(), lower(), escapeRe(), Lexicon, PACK_FORMAT (+27 more)
+### Community 90 - "lexicon.js"
+Cohesion: 0.13
+Nodes (12): hasRules(), foldKey(), lower(), escapeRe(), Lexicon, PACK_FORMAT, rank(), scriptOf() (+4 more)
 
 ### Community 91 - "QB1 qbmath — pure network-memory formulas"
 Cohesion: 0.19
-Nodes (29): capsPageView(), capsView(), CP, CP_LANGS, cpBy(), cpCap(), cpChat(), send() (+21 more)
+Nodes (30): capsPageView(), capsView(), CP, CP_LANGS, cpBy(), cpCap(), cpChat(), send() (+22 more)
 
 ### Community 92 - "FQLError"
-Cohesion: 0.13
-Nodes (13): FQLError, CollRef, DocRef, Evaluator, distinct(), int_arg(), wrap(), project() (+5 more)
+Cohesion: 0.12
+Nodes (15): FQLError, CollectionNamespace, CollRef, DocRef, Evaluator, distinct(), int_arg(), wrap() (+7 more)
 
 ### Community 93 - "QB1 Commons teams & cycles"
-Cohesion: 0.10
-Nodes (6): _net(), Commons, counts(), fact_status(), norm(), now_iso()
+Cohesion: 0.07
+Nodes (9): _net(), Commons, counts(), fact_status(), log(), norm(), now_iso(), Power (+1 more)
 
 ### Community 94 - "QB1 Frame tools & Video Language stand-in"
 Cohesion: 0.11
 Nodes (12): ask(), dsn_hit(), dsn_miss(), dsn_recover(), dsn_strong(), self_test(), syn_consolidated(), syn_depress() (+4 more)
 
-### Community 95 - "Tests — Book Query"
-Cohesion: 0.10
-Nodes (6): PackManager, requestPersistence(), sha256(), memory, storage, STORES
-
 ### Community 96 - "lablangs.py"
-Cohesion: 0.16
-Nodes (11): cloud_translate(), control_panel_key(), espeak_languages(), espeak_voice(), gemini_translate(), google_translate(), languages(), pack_languages() (+3 more)
+Cohesion: 0.17
+Nodes (10): control_panel_key(), espeak_languages(), espeak_voice(), gemini_translate(), google_translate(), languages(), pack_languages(), _post() (+2 more)
 
 ### Community 97 - "test_book_query.py"
 Cohesion: 0.10
@@ -674,8 +698,8 @@ Cohesion: 0.07
 Nodes (14): clone(), P(), clone(), find(), highlight(), insert_after(), mk_rpr(), order() (+6 more)
 
 ### Community 100 - "QB1 Lip-reading curriculum"
-Cohesion: 0.12
-Nodes (10): read(), compact(), cross_validate(), Curriculum, labelled_rows(), match(), score(), self_test() (+2 more)
+Cohesion: 0.16
+Nodes (6): read(), compact(), Curriculum, match(), score(), self_test()
 
 ### Community 101 - "QB1 Answer engine — plan, compose, verify (qbcompose)"
 Cohesion: 0.14
@@ -683,31 +707,31 @@ Nodes (5): diagnostics(), DatabaseDamaged, Monitor, loop(), MonitorError
 
 ### Community 102 - "QB1 Monitor (alerts)"
 Cohesion: 0.12
-Nodes (4): add_routes(), attach(), Engineer, _now()
+Nodes (5): add_routes(), attach(), Engineer, _now(), _sha()
 
 ### Community 103 - "QB1 Transcribe UI"
-Cohesion: 0.13
-Nodes (6): _kind(), Library, _name_from_file(), _now(), quality(), _size()
+Cohesion: 0.14
+Nodes (5): _kind(), Library, _now(), quality(), _size()
 
 ### Community 104 - "QB1 Translate app — boot, settings, cloud"
 Cohesion: 0.19
 Nodes (23): MIC, micLive(), micLoop(), micResample(), micSend(), micSlice(), micStop(), TR (+15 more)
 
 ### Community 105 - "QB Next — configuration"
-Cohesion: 0.04
-Nodes (25): bulk_demand_list(), api_refused(), api_refused_set(), demand_learned(), demand_list(), domain_load(), domain_path(), Meter (+17 more)
+Cohesion: 0.05
+Nodes (22): bulk_demand_list(), api_refused_set(), demand_learned(), demand_list(), add(), domain_load(), domain_path(), wdqs_ask() (+14 more)
 
 ### Community 106 - "QB1 Bulk harvest — shard paths & restore"
-Cohesion: 0.18
-Nodes (5): kind_of(), now_iso(), plural(), Scan, _when()
+Cohesion: 0.20
+Nodes (4): kind_of(), now_iso(), plural(), Scan
 
 ### Community 107 - "QB1 Speech science UI"
 Cohesion: 0.07
-Nodes (17): add_days(), App, build(), custom_add(), custom_list(), get_settings(), languages(), post_native() (+9 more)
+Nodes (19): add_days(), App, build(), custom_add(), custom_list(), get_native(), get_settings(), languages() (+11 more)
 
 ### Community 108 - "QB1 Translate — pronunciation (g2p)"
-Cohesion: 0.12
-Nodes (6): _multipart(), _now(), Personas, upload(), photo_check(), _base()
+Cohesion: 0.13
+Nodes (5): _multipart(), _now(), Personas, upload(), _base()
 
 ### Community 109 - "Tests — QB1 Rust compatibility"
 Cohesion: 0.21
@@ -717,25 +741,25 @@ Nodes (22): SC_RATES, scAvatars(), scBody(), scClip(), scCompare(), scDeliveryHt
 Cohesion: 0.12
 Nodes (22): ES_ONSETS, HI_CONS, HI_NUKTA, HI_SIGN, HI_VOW, hindi(), IT_ONSETS, italian() (+14 more)
 
-### Community 111 - "Lab"
-Cohesion: 0.20
-Nodes (4): Lab, _lean(), _now(), packet()
+### Community 111 - "visemes.py"
+Cohesion: 0.13
+Nodes (15): frames_for(), align(), _cached_phonemes(), _cut_level(), _measured(), _partition(), phonemes(), _reweight() (+7 more)
 
 ### Community 112 - "QB1 Dump downloader"
-Cohesion: 0.12
-Nodes (8): open_(), retry(), Team, go(), go(), tick(), run(), budgets()
+Cohesion: 0.11
+Nodes (8): Team, go(), go(), tick(), run(), now_cs(), budgets(), execute()
 
 ### Community 113 - "QB1 STEM units"
-Cohesion: 0.16
-Nodes (11): Busy, Download, m(), worker(), edition_of(), head(), _host(), md5_file() (+3 more)
+Cohesion: 0.19
+Nodes (8): Busy, Download, m(), worker(), edition_of(), _host(), md5_file(), st()
 
 ### Community 114 - "cli.py"
-Cohesion: 0.14
-Nodes (6): build_apps(), main(), _print(), Runtime, _serve(), SuiteStoreTest
+Cohesion: 0.08
+Nodes (13): build_apps(), main(), _print(), Runtime, _serve(), fingerprint(), shard_fp(), parse_file() (+5 more)
 
 ### Community 115 - "Book Studio — engine closures"
-Cohesion: 0.11
-Nodes (23): convert_value(), dim_string(), _fmt(), _mul(), _one(), parse_unit(), factor(), peek() (+15 more)
+Cohesion: 0.19
+Nodes (16): convert_value(), dim_string(), _fmt(), _mul(), _one(), parse_unit(), factor(), peek() (+8 more)
 
 ### Community 119 - "config.py"
 Cohesion: 0.21
@@ -745,9 +769,9 @@ Nodes (7): DataFolderMissing, _is_drive_path(), paths(), Paths, read_data_folder
 Cohesion: 0.17
 Nodes (4): overview(), Harvest, self_test(), write_catalog()
 
-### Community 121 - "qbkeystone.py"
-Cohesion: 0.21
-Nodes (7): keystones(), coverage(), entity_keystone(), _novelty(), probes(), self_test(), unlocks()
+### Community 121 - "answer"
+Cohesion: 0.10
+Nodes (16): answer(), base(), bulk(), entity(), _get(), rank(), understand(), follow_up() (+8 more)
 
 ### Community 122 - "QB1 Photo Real UI"
 Cohesion: 0.11
@@ -769,13 +793,13 @@ Nodes (18): answerHtml(), ask(), currentFormula(), ELEMENTS, EXAMPLES, fmt(), FO
 Cohesion: 0.14
 Nodes (3): {closure#1}(), {closure#3}(), ManuscriptDeveloper
 
-### Community 128 - "Parser"
-Cohesion: 0.37
-Nodes (3): limit_arg(), Token, Parser
-
 ### Community 129 - "WikidataDump"
-Cohesion: 0.05
-Nodes (15): bulk_coverage(), dump_coverage(), dump_positions_read(), edition_progress(), gz_member_lines(), _lane_parts(), local_mode(), _prefetch() (+7 more)
+Cohesion: 0.07
+Nodes (12): keystones(), statement_context(), vals(), unread_first(), WikidataDump, coverage(), entity_keystone(), _novelty() (+4 more)
+
+### Community 130 - "QB1 Translate — language packs"
+Cohesion: 0.14
+Nodes (7): asciiPunct(), CJK_PUNCT, TranslatorEngine, normalize(), resultFingerprint(), isRtl(), RTL
 
 ### Community 131 - "QB1 Seal — X25519 encryption"
 Cohesion: 0.10
@@ -787,19 +811,23 @@ Nodes (11): google_tests(), authed(), do_DELETE(), do_GET(), do_POST(), do_PUT()
 
 ### Community 133 - "QB1 Google settings"
 Cohesion: 0.06
-Nodes (32): voiced(), a_an(), abstract_count(), check_paragraph(), check_preview(), claims(), content(), copies() (+24 more)
+Nodes (38): voiced(), a_an(), abstract_count(), analyze_document(), check_paragraph(), check_preview(), claims(), content() (+30 more)
 
 ### Community 134 - "QB1 Agents — SKILL.md frontmatter"
 Cohesion: 0.23
 Nodes (19): editFact(), factRow(), fmt(), lastQuery, loadData(), loadNews(), loadSources(), options() (+11 more)
 
-### Community 135 - "_http"
-Cohesion: 0.26
-Nodes (11): body(), heygen_video(), upload(), run(), run(), run(), _http(), run() (+3 more)
+### Community 135 - "talkclip.py"
+Cohesion: 0.15
+Nodes (9): for_person(), gemini_video(), heard_share(), heygen_video(), upload(), image_type(), _multipart(), prompt() (+1 more)
 
 ### Community 136 - "QB1 History UI"
 Cohesion: 0.14
 Nodes (16): detectShell(), installNativeBridge(), pending, post(), request(), streams, voices, asr (+8 more)
+
+### Community 137 - "Studio"
+Cohesion: 0.16
+Nodes (4): library_add(), _dur(), _hold(), Studio
 
 ### Community 138 - "_supervisor_tests"
 Cohesion: 0.09
@@ -813,29 +841,29 @@ Nodes (10): formulas_match_python(), qbmath_matches_python_exactly(), rows(), fl
 Cohesion: 0.22
 Nodes (18): PYTHONUTF8, steps, steps, env, if, name, run, shell (+10 more)
 
-### Community 141 - "_req"
-Cohesion: 0.05
-Nodes (15): cached(), HOT_FETCH(), NEWS_FETCH(), NEWS_TEXT_FETCH(), pages(), RangeFile, _req(), Taxonomy (+7 more)
+### Community 141 - "qbnews.py"
+Cohesion: 0.21
+Nodes (5): _cap(), fact_object(), mentions(), paper_of(), surname_like()
 
 ### Community 143 - "QB1 Control Panel startup"
-Cohesion: 0.11
-Nodes (7): selftest(), _youtube_selftest(), DateError, _ord(), _out(), parse(), _ymd()
+Cohesion: 0.12
+Nodes (3): open_app(), selftest(), _youtube_selftest()
 
 ### Community 144 - "QB1 Book Harvester — background job & catalog"
 Cohesion: 0.17
 Nodes (10): lablang_fill(), best(), fill(), fill_one(), from_english(), grammar_word(), _plain(), self_test() (+2 more)
 
-### Community 145 - "studio.py"
-Cohesion: 0.11
-Nodes (11): library_add(), _FakeLanguage, do_GET(), do_POST(), _out(), open_app(), captions(), _dur() (+3 more)
+### Community 145 - ".__init__"
+Cohesion: 0.60
+Nodes (3): do_GET(), do_POST(), _out()
 
 ### Community 146 - "Book Studio — AudiobookProducer"
 Cohesion: 0.22
 Nodes (15): actionOptions(), drawShots(), loadInfo(), loadLibrary(), loadOutputs(), loadProjects(), opt(), PERSONAS (+7 more)
 
 ### Community 147 - "mt.js"
-Cohesion: 0.21
-Nodes (19): pickCandidate(), assemble(), capitalize(), CLOSING, invert(), isSentenceStart(), isUnspacedText(), mapPunct() (+11 more)
+Cohesion: 0.11
+Nodes (36): pickCandidate(), CONFIRM_BELOW, detectLanguage(), assemble(), capitalize(), CLOSING, invert(), isSentenceStart() (+28 more)
 
 ### Community 148 - "QB1 Language Lab text"
 Cohesion: 0.10
@@ -846,28 +874,28 @@ Cohesion: 0.16
 Nodes (9): add_routes(), books_address(), books_discover(), go(), books_import(), books_remove(), books_review(), user() (+1 more)
 
 ### Community 150 - ".overdub"
-Cohesion: 0.13
-Nodes (8): apply_effects(), _envelope(), pitch_tempo(), read_wav(), resample(), _scale_pauses(), write_wav(), wsola()
+Cohesion: 0.10
+Nodes (8): apply_effects(), _envelope(), formant_wav(), pcm16_to_wav(), read_wav(), _scale_pauses(), tone_wav(), write_wav()
 
 ### Community 151 - "Book Studio — WordManuscriptExporter"
-Cohesion: 0.11
-Nodes (7): CloudLink, go(), Jobs, progress(), run(), now_cs(), started()
+Cohesion: 0.22
+Nodes (3): CloudLink, go(), started()
 
 ### Community 152 - "FoodData"
-Cohesion: 0.17
-Nodes (4): FoodData, GNIS, _seekable(), zip_lines()
+Cohesion: 0.11
+Nodes (5): FoodData, GNIS, RangeFile, _seekable(), zip_lines()
 
 ### Community 153 - "render"
-Cohesion: 0.10
-Nodes (14): pr_resolve(), espeak_opts(), mode_for(), render(), report(), run(), effective(), Espeak (+6 more)
+Cohesion: 0.09
+Nodes (13): Azure, effective(), Engine, run(), Formant, locale(), OpenAI, Polly (+5 more)
 
-### Community 154 - "parse_skill"
-Cohesion: 0.13
-Nodes (10): classify_line(), _count_kept(), _frontmatter(), flush(), llm_host(), parse_agent(), parse_skill(), purify() (+2 more)
+### Community 154 - "qbagents.py"
+Cohesion: 0.11
+Nodes (14): build_profile(), feature_defs(), _fmt(), _frontmatter(), flush(), _json5(), openclaw_home(), _redact() (+6 more)
 
 ### Community 156 - "QB1 Online harvesters — Wikidata sets"
-Cohesion: 0.15
-Nodes (8): diagnose(), judge(), last(), question_for(), run(), run_in_background(), go(), self_test()
+Cohesion: 0.13
+Nodes (10): commons_folder(), default_folder(), diagnose(), judge(), last(), question_for(), run(), run_in_background() (+2 more)
 
 ### Community 157 - "QB Next — FQL references & sets"
 Cohesion: 0.14
@@ -878,16 +906,16 @@ Cohesion: 0.23
 Nodes (3): AssistTest, fake_ask(), fake_check()
 
 ### Community 160 - "plan"
-Cohesion: 0.18
-Nodes (5): cloud_style(), coverage(), describe(), GoogleGemini, plan()
+Cohesion: 0.29
+Nodes (3): cloud_style(), describe(), GoogleGemini
 
 ### Community 162 - "speech_probe.py"
 Cohesion: 0.27
 Nodes (5): feature_probe(), long_probe(), md5(), say(), whisper_probe()
 
-### Community 163 - "answer"
-Cohesion: 0.07
-Nodes (18): answer(), base(), bulk(), entity(), _get(), rank(), short_answer(), understand() (+10 more)
+### Community 163 - ".__init__"
+Cohesion: 0.11
+Nodes (6): split_claims(), check_text(), child_env(), data_folder(), Program, WindowsJob
 
 ### Community 165 - "QB1 Video Studio renderer"
 Cohesion: 0.23
@@ -913,13 +941,13 @@ Nodes (7): domain_discover(), at_home(), people(), query(), interleave(), _num()
 Cohesion: 0.15
 Nodes (12): jobs, lean, defaults, name, runs-on, name, on, pull_request (+4 more)
 
-### Community 172 - "QB1 Commons harvest routes & control"
-Cohesion: 0.12
-Nodes (4): StoreError, RuntimeCase, ServerTest, StoreTest
-
 ### Community 175 - "CI — Windows bundle & farm jobs"
-Cohesion: 0.16
+Cohesion: 0.17
 Nodes (11): QueryBookServer, do_GET(), do_HEAD(), do_POST(), page(), read_json(), send_bytes(), send_error_json() (+3 more)
+
+### Community 179 - "._run_alone"
+Cohesion: 0.12
+Nodes (10): bulk_download_settings(), download_status(), dumps_folder(), dumps_ready(), local_mode(), save_download_settings(), stream_while_downloading(), WikidataDownload (+2 more)
 
 ### Community 181 - "QB1 Pronunciation — heteronym decisions"
 Cohesion: 0.18
@@ -933,17 +961,21 @@ Nodes (7): _cap(), _full(), _label(), parse(), flush(), start(), _title()
 Cohesion: 0.14
 Nodes (3): Context, is_non_commercial(), master_running()
 
-### Community 186 - "QB Next — FQL errors & tokens"
-Cohesion: 0.16
-Nodes (9): gcloud_backup_now(), run(), selftest(), system_log(), _age(), _check(), Diagnostics, _kb() (+1 more)
+### Community 186 - "qbframes.py"
+Cohesion: 0.21
+Nodes (14): _assemble(), backends(), bridge(), _ff(), find_tool(), fps(), frame_difference(), _frames() (+6 more)
 
 ### Community 187 - "Tests — QB Next Rust compatibility"
-Cohesion: 0.26
-Nodes (10): make_handler(), _dispatch(), note(), do_GET(), do_POST(), _host_ok(), _send(), _static() (+2 more)
+Cohesion: 0.46
+Nodes (7): make_handler(), _dispatch(), do_GET(), do_POST(), _host_ok(), _send(), _static()
 
-### Community 190 - "package.py"
-Cohesion: 0.53
-Nodes (3): _add_file(), _add_tree(), build_suite()
+### Community 190 - "hybrid_video.py"
+Cohesion: 0.17
+Nodes (14): _concat(), _edit(), gemini_generator(), _join(), _join_bridged(), main(), _now(), plan() (+6 more)
+
+### Community 191 - "qbcompose.py"
+Cohesion: 0.14
+Nodes (10): answer(), ask_model(), claude_json(), evidence_text(), gather(), gemini_json(), load_keys(), _post() (+2 more)
 
 ### Community 192 - "test_agents.py"
 Cohesion: 0.17
@@ -957,17 +989,33 @@ Nodes (10): asind(), projectile_g(), projectile_Rg(), projectile_theta(), projec
 Cohesion: 0.25
 Nodes (9): suite, os, strategy, fail-fast, matrix, defaults, name, runs-on (+1 more)
 
-### Community 200 - "Tests — QB Next single-file build"
-Cohesion: 0.15
-Nodes (10): Finding, js_findings(), _lines(), py_findings(), _sha(), todo_findings(), Approvals, check() (+2 more)
+### Community 196 - "_wd_item"
+Cohesion: 0.24
+Nodes (18): _battles(), _compounds(), _countries(), _label(), _languages(), _minerals(), _mountains(), _named() (+10 more)
+
+### Community 199 - "Engine"
+Cohesion: 0.18
+Nodes (6): Engine, fn(), fn(), run(), learn_targets(), _now()
+
+### Community 200 - "test_engineer.py"
+Cohesion: 0.27
+Nodes (4): Approvals, check(), main(), make_suite()
 
 ### Community 202 - "Settings"
 Cohesion: 0.19
 Nodes (5): auto_setup(), find_gcloud(), _gcloud_runner(), run(), Settings
 
+### Community 207 - "renderEssentials"
+Cohesion: 0.32
+Nodes (14): addTurn(), checkOnDeviceAsr(), effectiveSrc(), listenOneWay(), listenTurn(), offerInstall(), renderEssentials(), renderPhrasebook() (+6 more)
+
+### Community 208 - "render"
+Cohesion: 0.21
+Nodes (6): pr_resolve(), espeak_opts(), mode_for(), render(), report(), Espeak
+
 ### Community 210 - ".last_verification"
 Cohesion: 0.09
-Nodes (11): prog(), import_old(), lab_feed(), run(), lab_run(), sp_match(), verify_json(), verify_last() (+3 more)
+Nodes (10): prog(), import_old(), lab_feed(), run(), lab_run(), sp_match(), verify_json(), verify_last() (+2 more)
 
 ### Community 214 - "QB1 Control Panel ticker"
 Cohesion: 0.47
@@ -989,49 +1037,117 @@ Nodes (5): speech-probe, continue-on-error, defaults, name, runs-on
 Cohesion: 0.70
 Nodes (4): BK_FOUND, bkDrawFound(), bkFind(), loadBooks()
 
+### Community 223 - "parse"
+Cohesion: 0.26
+Nodes (6): facts(), DateError, _ord(), _out(), parse(), _ymd()
+
 ### Community 225 - "QB1 API documentation"
 Cohesion: 0.50
 Nodes (4): windows-harvest, defaults, name, runs-on
 
+### Community 226 - "facts/sources.py"
+Cohesion: 0.30
+Nodes (7): check_source(), fetch_feed(), is_ai_url(), parse_feed(), SourceError, strip_html(), _text()
+
+### Community 231 - "silent.py"
+Cohesion: 0.26
+Nodes (6): si_read(), _classes(), decode(), decode_word(), slot_values(), _sub_dtw()
+
 ### Community 232 - "hygiene-contract.php"
-Cohesion: 0.06
-Nodes (53): build(), _as_text(), _Budget, _cmap(), detect(), _entropy(), _exif(), _jpeg_size() (+45 more)
+Cohesion: 0.05
+Nodes (49): _as_text(), _Budget, _cmap(), detect(), _entropy(), _exif(), _Extract, _jpeg_size() (+41 more)
+
+### Community 236 - "wire"
+Cohesion: 0.33
+Nodes (12): activate(), currentView(), fmtBytes(), importPack(), openPicker(), renderLanguages(), renderLid(), renderPicker() (+4 more)
+
+### Community 254 - "gen_lean.py"
+Cohesion: 0.24
+Nodes (7): formulas_lean(), ident(), lit(), qlit(), to_lean(), go(), units_lean()
+
+### Community 262 - "Jobs"
+Cohesion: 0.22
+Nodes (4): Jobs, progress(), run(), _summary()
 
 ### Community 263 - "assistant.py"
 Cohesion: 0.36
 Nodes (7): panel_chat_say(), apps_in(), _do(), _items(), parse(), respond(), _strip_apps()
 
+### Community 265 - ".start_lan"
+Cohesion: 0.27
+Nodes (7): spec(), _bearer(), device_call(), do_GET(), do_POST(), _send(), openapi()
+
+### Community 266 - ".add_fact"
+Cohesion: 0.22
+Nodes (5): flush(), add(), import_csv(), import_old(), _category()
+
+### Community 267 - "plan"
+Cohesion: 0.22
+Nodes (7): pr_lexicon(), pr_lexicon_put(), pr_lexicon_remove(), sp_plan(), active_lexicon(), coverage(), plan()
+
+### Community 269 - "boot"
+Cohesion: 0.33
+Nodes (9): applyTheme(), boot(), firstRun(), openSettings(), presetFromConfig(), renderMonitor(), renderNetBadge(), saveSettings() (+1 more)
+
+### Community 270 - "packs.js"
+Cohesion: 0.25
+Nodes (5): requestPersistence(), storageEstimate(), memory, storage, STORES
+
 ### Community 272 - "CoordinationTest"
-Cohesion: 0.09
+Cohesion: 0.08
 Nodes (3): CoordinationTest, MachineTest, model()
 
 ### Community 278 - "atomize"
 Cohesion: 0.33
 Nodes (4): atomize(), kind_of(), quantities(), sentences()
 
-### Community 285 - "diagnostics"
-Cohesion: 0.17
-Nodes (4): diagnostics(), stamp(), formant_wav(), tone_wav()
+### Community 280 - ".update_fact"
+Cohesion: 0.25
+Nodes (4): run(), add_source(), delete(), update()
+
+### Community 281 - "._cloud_keys"
+Cohesion: 0.29
+Nodes (5): lablang_cloudtr(), lablang_languages(), translate_config(), translate_gateway_mt(), cloud_translate()
+
+### Community 284 - "build_doctypes.py"
+Cohesion: 0.36
+Nodes (5): build(), add(), main(), parts(), slug()
+
+### Community 285 - "pitch_tempo"
+Cohesion: 0.33
+Nodes (3): pitch_tempo(), resample(), wsola()
+
+### Community 287 - "_wikidata"
+Cohesion: 0.50
+Nodes (4): _wd(), _wd_entities(), _wd_search(), _wikidata()
+
+### Community 289 - "published_md5"
+Cohesion: 0.67
+Nodes (3): head(), published_md5(), _req()
+
+### Community 291 - "langLabel"
+Cohesion: 1.00
+Nodes (4): lang(), langLabel(), renderConverseHeads(), renderLangbar()
 
 ## Knowledge Gaps
 - **16 isolated node(s):** `PATH`, `qbcore`, `querybook-core`, `querybook-next`, `Eof` (+11 more)
-  These have ≤1 connection - possible missing edges. (Counts symbols only; 2357 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **96 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+  These have ≤1 connection - possible missing edges. (Counts symbols only; 2372 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **101 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `App` connect `QB1 Speech science UI` to `QB1 Language — HTTP routes (app.py)`, `._science_read`, `hashlib`, `_persona_selftest`, `.last_verification`, `QB Next — legacy & Lean spec tests`, `QB1 Engineer — self-analysis & approved fixes`?**
-  _High betweenness centrality (0.025) - this node is a cross-community bridge._
+- **Why does `App` connect `QB1 Speech science UI` to `QB1 Language — HTTP routes (app.py)`, `._science_read`, `hashlib`, `_persona_selftest`, `._talk_face`, `.last_verification`, `._cloud_keys`, `QB Next — legacy & Lean spec tests`, `QB1 Engineer — self-analysis & approved fixes`?**
+  _High betweenness centrality (0.029) - this node is a cross-community bridge._
 - **Are the 39 inferred relationships involving `self_test()` (e.g. with `.db()` and `.facts()`) actually correct?**
   _`self_test()` has 39 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `PATH`, `qbcore`, `querybook-core` to the rest of the system?**
   _16 weakly-connected nodes found - possible missing edges._
 - **Should `QB1 Language — HTTP routes (app.py)` be split into smaller, more focused modules?**
-  _Cohesion score 0.02065232872810141 - nodes in this community are weakly interconnected._
-- **Why does `UserError` connect `QB1 Synapse network memory` to `qbonline.py`, `_supervisor_tests`, `QB1 Scaffold facts (calendar) & History harvest`, `Book Studio — WordManuscriptExporter`, `commons_folder`, `parse_skill`, `QB1 Bulk harvest — slots, merge slots, small datasets`, `CI — QueryBook Next workflow`, `QB1 History & News sources (feeds)`, `QB1 Bulk harvest — routes, autostart, plain reports`, `QB1 Artifact ingestion — detect & segment files`, `QB Next — FQL errors & tokens`, `QB1 API connections & key checks`, `QB1 Visemes — phoneme timing`, `QB1 Language Lab UI (lablang.js)`, `qbcore.py`, `QB1 Harvest campaigns`, `QB1 Author personas (narrator)`, `QB1 Commons teams & cycles`, `QB1 Answer engine — plan, compose, verify (qbcompose)`, `QB1 Monitor (alerts)`, `QB Next — configuration`, `QB1 Dump downloader`?**
-  _High betweenness centrality (0.020) - this node is a cross-community bridge._
+  _Cohesion score 0.02379592613744527 - nodes in this community are weakly interconnected._
+- **Why does `UserError` connect `QB1 API connections & key checks` to `Jobs`, `qbonline.py`, `.start_lan`, `QB1 Scaffold facts (calendar) & History harvest`, `qbagents.py`, `keep_alive`, `QB1 Bulk harvest — slots, merge slots, small datasets`, `re`, `QB1 History & News sources (feeds)`, `._run_alone`, `QB1 Bulk harvest — routes, autostart, plain reports`, `QB1 Artifact ingestion — detect & segment files`, `QB1 Synapse network memory`, `QB1 Visemes — phoneme timing`, `QB1 Language Lab UI (lablang.js)`, `qbcore.py`, `QB1 Harvest campaigns`, `QB1 Author personas (narrator)`, `QB1 Commons teams & cycles`, `QB1 Answer engine — plan, compose, verify (qbcompose)`, `QB1 Monitor (alerts)`, `QB Next — configuration`, `QB1 Dump downloader`?**
+  _High betweenness centrality (0.025) - this node is a cross-community bridge._
 - **Should `QB1 Rust port — STEM formulas (formulas.rs)` be split into smaller, more focused modules?**
   _Cohesion score 0.03737646001796945 - nodes in this community are weakly interconnected._
-- **Why does `f()` connect `_supervisor_tests` to `WikidataDump`, `_supervisor_tests`, `QB1 Scaffold facts (calendar) & History harvest`, `Book Studio — WordManuscriptExporter`, `FoodData`, `QB1 Bulk harvest — Wikidata lattice (ranged reads)`, `commons_folder`, `QB1 Online harvesters — Wikidata sets`, `QB1 Engineer — self-analysis & approved fixes`, `QB Next — legacy & Lean spec tests`, `hashlib`, `WikidataLattice`, `QB1 Synapse network memory`, `QB1 Language Lab UI (lablang.js)`, `qbcore.py`, `.last_verification`, `build_bibles.py`, `test_book_query.py`, `QB1 Answer engine — plan, compose, verify (qbcompose)`, `QB Next — configuration`?**
-  _High betweenness centrality (0.019) - this node is a cross-community bridge._
+- **Why does `FQLTest` connect `FQLTest` to `QB1 STEM calculation engine`, `evaluator.py`?**
+  _High betweenness centrality (0.018) - this node is a cross-community bridge._

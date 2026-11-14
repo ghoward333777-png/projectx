@@ -125,13 +125,38 @@ class Assist:
         return {"capabilities": caps.CAPABILITIES, "steps": caps.STEPS, "ai": self.status(), "labels": LABELS,
                 "genres": [{"id": g["id"], "name": g["name"], "family": g["family"], "learned": len(g.get("learned") or [])} for g in lib["genres"].values()],
                 "families": lib["families"], "genres_status": lib["status"],
-                "styles": [{"id": x["id"], "name": x["name"], "about": x.get("about", ""), "by": x.get("by", "")} for x in self.styles().values()],
-                "fields": list(lib["fields"].values()),
+                "styles": [{"id": x["id"], "name": x["name"], "about": x.get("about", ""), "by": x.get("by", ""), "group": x.get("group") or "Your own styles",
+                            "for": x.get("for", ""), "asks": writing.style_brief(x).split(". ", 1)[-1] if x.get("profile") else ""} for x in self.styles().values()],
+                "fields": list(lib["fields"].values()), "controls": {k: list(v) for k, v in writing.CONTROLS.items()}, "control_names": writing.CONTROL_SAY,
+                "doctypes": {"purposes": self.doctypes()["purposes"],
+                             "domains": [{"n": d["n"], "name": d["name"], "families": [{"name": f["name"], "types": [
+                                 {"id": t["id"], "name": t["name"], "parts": len(t["elements"]), "full": bool(t["genre"])} for t in f["types"]]}
+                                 for f in d["families"]]} for d in self.doctypes()["domains"]]},
                 "sources": [dict(x, rules=done.get(x["id"], 0), pages=pages_of.get(x["id"], 0),
                                  status="learned from: %d rules from %d page%s" % (done[x["id"]], pages_of[x["id"]], "" if pages_of[x["id"]] == 1 else "s")
                                  if x["id"] in done else "not read: " + self._not_read[x["id"]] if x["id"] in self._not_read else x["status"])
                             for x in lib["sources"].values()],
                 "learned": {"rules": sum(done.values()), "pages": len(every), "sources": len([k for k in done if k])}}
+
+    def doctypes(self) -> dict:
+        """the universal document types (the user's taxonomy): domains, types, expected parts, purposes"""
+        if getattr(self, "_doctypes", None) is None:
+            try:
+                with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "doctypes.json"), encoding="utf-8") as f:
+                    self._doctypes = writing.load_doctypes(f.read())
+            except (OSError, ValueError, KeyError):
+                self._doctypes = {"domains": [], "purposes": [], "types": {}}
+        return self._doctypes
+
+    def record_for(self, genre_id: str, doctype: str) -> dict:
+        """the record to plan and judge by: the genre's full record, or the chosen document type's (its own parts), or {}"""
+        lib = self.genres()
+        if genre_id in lib["genres"]:
+            return lib["genres"][genre_id]
+        t = self.doctypes()["types"].get(doctype)
+        if not t:
+            return {}
+        return lib["genres"][t["genre"]] if t.get("genre") in lib["genres"] else writing.genre_from_type(t)
 
     def shipped_learned(self) -> list:
         """the rules QueryBook ships with: learned from the register's sources in a build session (tools/build_learned.py)"""
@@ -270,12 +295,17 @@ class Assist:
         field = self.genres()["fields"].get(str(body.get("field") or ""), {})
         style = self.styles().get(str(body.get("style") or ""), {})
         lib = self.genres()
-        pick = {"id": genre_id, "why": "chosen", "blend": ""} if genre_id in lib["genres"] else writing.select_genre(brief, lib)
+        g = self.record_for(genre_id, str(body.get("doctype") or ""))
+        pick = {"id": g["id"], "why": "chosen", "blend": ""} if g else writing.select_genre(brief, lib)
         if not pick["id"]:
-            names = ", ".join(g["name"] for g in lib["genres"].values())
-            return {"by": "rules", "text": "What kind of document should this be? Choose one above, or name it in the brief.\n\nQueryBook can plan and check: " + names + ".",
-                    "note": "The brief does not name a kind of document, and QueryBook does not guess one."}
-        g = lib["genres"][pick["id"]]
+            return {"by": "rules", "ask_type": True,
+                    "text": "What type of document is this? Choose its area and then its type above — %d types in %d areas — or name it in the brief."
+                            % (len(self.doctypes()["types"]), len(self.doctypes()["domains"])),
+                    "note": "The writing engine works from the type of document: its parts, its reader and its rules. It does not guess one."}
+        g = g or lib["genres"][pick["id"]]
+        purpose = str(body.get("purpose") or "")
+        if purpose in self.doctypes()["purposes"]:
+            brief = brief + "\nPurpose of the document: to %s." % purpose.lower()
         bp = writing.with_field_and_style(writing.blueprint(g, brief), field, style)
         plan = writing.blueprint_text(bp)
         out = {"genre": g["id"], "genre_name": g["name"], "blueprint": bp, "blueprint_text": plan, "blend": pick["blend"],
@@ -284,6 +314,9 @@ class Assist:
         own = str(body.get("own") or "").strip()[:20000]     # the writer's own material: answers to the interview, notes, evidence
         if stage == "plan":                                  # the user reviews the plan before a word is drafted
             iv = writing.voice_interview(brief)
+            ctl0 = writing.controls_brief(body.get("controls") if isinstance(body.get("controls"), dict) else {})
+            if ctl0:
+                plan = plan + "\n\nYour settings (they override the type's usual manner):\n" + "\n".join("  • " + c for c in ctl0)
             return dict(out, by="rules", text=plan, can_draft=self.can_ai(use_ai), interview=iv, interview_text="" if bp["fiction"] else writing.interview_text(iv),
                         note=("This is the plan. Read it; change the brief, the kind, the field or the style if it is not what you want; then have it written. "
                               if self.can_ai(use_ai) else "This is the plan to write from. No AI key is saved, so QueryBook cannot draft it: write to the plan, "
@@ -303,15 +336,27 @@ class Assist:
         system = ("You draft documents to a blueprint. Follow the BLUEPRINT exactly. Use only what the BRIEF and the FACTS give: add no fact, name, "
                   "number, date, quotation or source of your own, and leave [square brackets] where a needed detail is missing."
                   + (" This is fiction: invent the story from the brief's premise, and keep its own facts consistent." if bp["fiction"] else ""))
-        user = "BLUEPRINT:\n%s\n\nBRIEF:\n%s\n\nTHE WRITER'S OWN MATERIAL (use it; keep its details and wording; add nothing to it):\n%s\n\nFACTS:\n%s" % (
+        controls = body.get("controls") if isinstance(body.get("controls"), dict) else {}
+        ctl = writing.controls_brief(controls)                # the person's own settings: tone, point of view, formality, length …
+        ctl_text = ("\n\nTHE WRITER'S SETTINGS (these override the usual manner of the type and the style):\n" + "\n".join("- " + c for c in ctl)) if ctl else ""
+        user = ("BLUEPRINT:\n%s" + ctl_text.replace("%", "%%") + "\n\nBRIEF:\n%s\n\nTHE WRITER'S OWN MATERIAL (use it; keep its details and wording; add nothing to it):\n%s\n\nFACTS:\n%s") % (
             writing.writer_brief(bp), brief[:6000], own or "(none given)", "\n".join(fact_lines) or "(none held)")
 
         def voiced(r: dict) -> dict:                         # every draft is read against VOICE (rules, no AI) before the person sees it
+            if ctl:
+                cc = writing.controls_check(str(r.get("text") or ""), controls)
+                r = dict(r, settings=ctl, settings_check=cc, settings_text="\n".join(
+                    ["YOUR SETTINGS"] + ["  " + c for c in ctl] + ["", "CHECKED AGAINST THE DRAFT (what a rule can measure)"] +
+                    ["  %s %s: %s" % ("✔" if x["ok"] else "•" if x["ok"] is None else "✖", x["control"], x["why"]) for x in cc]))
             if bp["fiction"]:
                 fa = writing.fiction_audit(str(r.get("text") or ""))
                 return dict(r, story=fa, story_text=writing.fiction_text(fa))
             a = writing.voice_audit(str(r.get("text") or ""), brief + "\n" + own)
-            return dict(r, voice=a, voice_text=writing.voice_text(a))
+            r = dict(r, voice=a, voice_text=writing.voice_text(a))
+            if bp.get("genre") in writing.ESSAY_GENRES:
+                ea = writing.essay_audit(str(r.get("text") or ""))
+                r = dict(r, essay=ea, essay_text=writing.essay_text(ea))
+            return r
         try:
             if stage == "revise":                            # the user's own notes on the draft they have read
                 notes, old = str(body.get("notes") or "").strip(), str(body.get("draft") or "").strip()
@@ -352,7 +397,9 @@ class Assist:
         """a draft read against the user's VOICE guidelines. The rules point and ask; with a key, a model adds a second reading as
         an editor who does not rewrite — labelled, and never allowed to call a claim verified."""
         a = writing.voice_audit(text, own)
-        r = {"by": "rules", "voice": a, "text": writing.voice_text(a),
+        long_enough = len(writing.paragraphs(text)) >= 3
+        ea = writing.essay_audit(text) if long_enough else {}
+        r = {"by": "rules", "voice": a, "essay": ea, "text": writing.voice_text(a) + ("\n\n" + writing.essay_text(ea) if long_enough else ""),
              "note": "Read against five standards: Verified, Owned, Insightful, Clear, Engaging. QueryBook points and asks; it does not rewrite, and it "
                      "never marks a claim as verified — only you can, after opening the source."}
         if self.can_ai(use_ai):
@@ -367,7 +414,7 @@ class Assist:
 
     def check_draft(self, text: str, genre_id: str, body: dict) -> dict:
         lib = self.genres()
-        g = lib["genres"].get(genre_id)
+        g = self.record_for(genre_id, str(body.get("doctype") or ""))
         bp = writing.blueprint(g, "") if g else writing.plain_blueprint()
         bp = writing.with_field_and_style(bp, lib["fields"].get(str(body.get("field") or ""), {}), self.styles().get(str(body.get("style") or ""), {}))
         bp["asks"] = []
@@ -425,6 +472,11 @@ class Assist:
             r = {"by": "rules", "story": fa, "text": writing.fiction_text(fa),
                  "note": "Read for six common habits of stories: stiff dialogue, drifting point of view, vague stakes, one-speed pacing, starting too "
                          "early, overwriting. QueryBook counts and points; it does not rewrite. The choices are yours, in the edit."}
+        elif task == "write.analyze":
+            an = writing.analyze_document(text, self.doctypes(), self.styles())
+            r = {"by": "rules", "analysis": an, "text": writing.analysis_text(an),
+                 "note": "Read by QueryBook's rules: the likely type and purpose, the point of view, formality, tone and measured habits. Each is a "
+                         "likelihood with what it rests on; where the rules cannot tell, they say so."}
         elif task == "write.voice":
             r = self.voice_check(text, str(body.get("own") or ""), use_ai)
         elif task == "write.style":

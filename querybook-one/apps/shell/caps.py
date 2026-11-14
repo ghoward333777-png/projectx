@@ -32,12 +32,17 @@ CAPABILITIES: list[dict] = [
                 "about": "Any kind of document in the library, in any field and style. You see the plan first, then the draft (checked at five layers), then revise it with your own notes."},
                {"id": "write.check", "name": "Check a draft", "input": "text", "option": "genre",
                 "about": "Paste a draft and choose its kind: QueryBook judges it at five layers and says what to fix. No AI needed."},
+               {"id": "write.analyze", "name": "Analyze a document", "input": "text",
+                "about": "Paste any document. QueryBook reads what it is and how it sounds — likely type and purpose, point of view, formality, tone, "
+                         "sentence habits, nearest style templates — and can set the writing controls from it, so a new document can be written the same way."},
                {"id": "write.voice", "name": "VOICE check", "input": "text",
                 "about": "Paste a draft — yours or an AI's. QueryBook reads it against five standards: Verified (every claim to check), Owned (is it yours?), "
                          "Insightful (does it say something?), Clear, Engaging. It points and asks; it does not rewrite, and you make the final decisions."},
                {"id": "write.story_check", "name": "Story check", "input": "text",
                 "about": "Paste a scene or a chapter. QueryBook reads it for six common habits: dialogue that is too formal, point of view that drifts, "
                          "stakes that stay vague, pacing at one speed, a first page that starts too early, and overwriting. It points; you edit."},
+               {"id": "write.styles", "name": "Style library", "input": "text",
+                "about": "The style templates, by kind. Choose one and it is used for the next document you ask for — or add your own with “Learn my style”."},
                {"id": "write.style", "name": "Learn my style", "input": "text", "option": "name",
                 "about": "Paste a page or more of your own writing. QueryBook measures its habits and adds it to the style list — as numbers; none of your sentences is kept."},
                {"id": "write.learn", "name": "Learn from a source", "input": "brief", "option": "source", "placeholder": "https://… the address of one page of the source",

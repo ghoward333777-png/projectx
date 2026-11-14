@@ -213,3 +213,44 @@ not read and is not marked as a learned source). VOICE is for non-fiction; a sto
 
 The notes arrived with their first lines cut off: the name of the dialogue habit is inferred from its fix, and any tips
 before it are not in the engine.
+
+## The engine after 2026-11-14 (shell 1.11.0) — type first, analysis and generation, everything under the user's control
+
+The user: "users must be asked to define what type of document they want to generate or analyze"; "the Writing Engine needs to
+be used for both AI analysis and generation"; "every aspect of writing must be placed at the control of the user — so that the
+resulting text reads like human writing and not generic AI writing."
+
+**1. The universal document types** (`tools/doctypes_source.txt` → `tools/build_doctypes.py` → `apps/shell/doctypes.json`).
+The user's master taxonomy, kept as written: 45 domains, 917 types, the parts each type is expected to have (212 types have
+parts stated by the list, for the type or for its group), and 20 purposes. The page asks for **1. Area → 2. Type** before
+anything is planned or checked; nothing is guessed. A type QueryBook holds a full record for (★, 54 of them) uses that record
+with its learned rules; any other type is planned from the list's own parts, in the list's order
+(`writing.genre_from_type`), and says so. Legal, patent, medical, investment and insurance types carry their caution
+("a draft for a qualified lawyer" …). Not built: the deeper ontology the list describes (Level 1–4 objects, entities, claims,
+authority, rights on every ingested document); parsing an ingested document into its parts.
+
+**2. Analysis** (`writing.analyze_document`, task `write.analyze`). An existing document is read for its likely type (by its
+expected parts appearing as headings, or its name at the top), likely purpose, point of view, formality, tone, passive share,
+sentence habits and nearest style templates. Every line is a likelihood with what it rests on; "the rules cannot tell" is an
+answer. **Write with these settings** carries the reading into generation.
+
+**3. The writer's controls** (`writing.CONTROLS`, `controls_brief`, `controls_check`). Tone and second tone, point of view,
+formality, sentence length, reader level, contractions, feeling, humour, certainty, detail, how to open, how to end, length.
+A setting overrides the type's usual manner; one left alone follows the type and the style. What a rule can measure (point of
+view, contractions, length, sentence length) is checked against the draft; tone is left to the person's ear and said to be.
+
+**4. The style template library** (`STYLES`, `STYLE_GROUPS` in `tools/build_genres.py`; task `write.styles`). 42 templates in
+seven kinds — Everyday, Business, News and media, Academic and technical, Legal and official, Persuasion, Storytelling — each
+a description, what it is good for and its habits as numbers; described by manner, never by a named author. The user's own
+measured styles sit in the same library.
+
+**5. Structure for the reader** (`writing.essay_audit`, `ESSAY_RULES`): title that builds curiosity; introduction that poses a
+problem; index and discussion at every level; a constellation of key terms; a conclusion that returns to the problem and widens
+it. **Story check** now has nine habits: the six above plus a coming event with a clock, chapter endings left open, and
+planted things paid off (the last is the writer's to trace: rules cannot follow a thread across a book).
+
+**6. Sources read on 2026-11-14** (the sites the user named): MIT OpenCourseWare (29 rules), Reedsy's public guides (33),
+Purdue OWL (28) — 90 rules, through the same gate as before. Not learned from: OpenLearn (only a rendering of its pages could
+be had, so the copy check could not be made honestly), Quill and Write & Improve (tools: their public pages give no writing
+advice), Class Central (refused automated readers), Coursera (teaching needs an account). Google Docs outline view is a tip
+about a tool, not a source. Shipped total: 907 rules from 78 pages of 35 sources.

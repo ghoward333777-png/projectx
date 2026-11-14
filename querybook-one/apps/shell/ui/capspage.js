@@ -8,7 +8,8 @@
 "use strict";
 
 const CP = { root: null, cat: null, cap: akLoad("qb:caps:cap", ""), task: {}, ai: akLoad("qb:caps:ai", "1") === "1", busy: false,
-  text: {}, result: {}, chat: [], turns: [], wf: null, wfPick: "brief", wfDraft: [], lang: akLoad("qb:caps:lang", "es"), err: "" };
+  text: {}, result: {}, chat: [], turns: [], wf: null, wfPick: "brief", wfDraft: [], lang: akLoad("qb:caps:lang", "es"), style: akLoad("qb:caps:style", ""),
+  area: akLoad("qb:caps:area", ""), doctype: akLoad("qb:caps:doctype", ""), purpose: "", controls: JSON.parse(akLoad("qb:caps:controls", "{}") || "{}"), err: "" };
 const CP_LANGS = [["es", "Spanish"], ["fr", "French"], ["de", "German"], ["it", "Italian"], ["pt", "Portuguese"], ["nl", "Dutch"], ["pl", "Polish"],
   ["sv", "Swedish"], ["el", "Greek"], ["ro", "Romanian"], ["ja", "Japanese"], ["zh", "Chinese"], ["ko", "Korean"], ["ar", "Arabic"], ["hi", "Hindi"],
   ["ru", "Russian"], ["tr", "Turkish"], ["sw", "Swahili"], ["uk", "Ukrainian"], ["en", "English"]];
@@ -52,7 +53,7 @@ function cpDraw() {
 /* AI text gen (the rail, beside Language and Translate): the Write capability opened on the writing machine */
 function textGenView() {
   CP.textgen = true; CP.cap = "write";
-  if (!CP.task.write || !/^write\.(doc|check|voice|story_check|grammar|style|learn)$/.test(CP.task.write)) CP.task.write = "write.doc";
+  if (!CP.task.write || !/^write\.(doc|check|analyze|voice|story_check|styles|grammar|style|learn)$/.test(CP.task.write)) CP.task.write = "write.doc";
   const v = capsView();
   if (CP.cat) cpDraw();
   return v;
@@ -71,6 +72,7 @@ function cpPanel(c) {
   else if (c.id === "chat") box.append(cpChat(t));
   else if (t.id === "wf.run" || t.id === "wf.edit") box.append(cpWorkflow(t));
   else if (t.id === "proj.list") box.append(cpProjectList());
+  else if (t.id === "write.styles") box.append(cpStyleLibrary(c));
   else box.append(cpInput(c, t));
   if (CP.err) box.append(el("p", { class: "note" }, CP.err));
   const r = CP.result[t.id];
@@ -98,8 +100,10 @@ function cpInput(c, t) {
       return akAsk(text);
     }
     if (t.id === "tool.speak") return cpSpeak(text);
+    // the engine works from the type of document: the person is asked for it before anything is planned or judged
+    if (t.option === "genre" && !CP.doctype) { CP.err = "First choose the type of document: its area, then its type."; return cpDraw(); }
     await cpDo(t.id, { task: t.id, text, option: t.id === "tr.quick" ? CP.lang : t.option === "genre" ? (CP.genre || "") : t.option === "source" ? (CP.source || "") : "",
-      style: CP.style || "", field: CP.field || "", name: CP.styleName || "", stage: "plan" });
+      style: CP.style || "", field: CP.field || "", name: CP.styleName || "", stage: "plan", doctype: t.option === "genre" ? CP.doctype : "", purpose: CP.purpose || "", controls: CP.controls || {} });
     if (t.id === "write.style" || t.id === "write.learn") { try { CP.cat = await (await fetch("/api/shell/caps")).json(); } catch (e) { /* the list refreshes next time */ } cpDraw(); }
   }
   const pickOf = (label, key, first, rows, group) => el("label", { class: "small" }, label + " ", el("select", { onchange: e => { CP[key] = e.target.value; } },
@@ -107,21 +111,57 @@ function cpInput(c, t) {
     group ? [...new Set(rows.map(group))].map(gname => el("optgroup", { label: gname }, rows.filter(r => group(r) === gname).map(r => el("option", { value: r.id, selected: r.id === CP[key] }, r.name))))
       : rows.map(r => el("option", { value: r.id, selected: r.id === CP[key] }, r.name + (r.by === "you" ? " (yours)" : "")))));
   // style and field (for a document or a check); the name of a style being learned; the source a page belongs to
-  const style = t.option === "genre" ? pickOf("Style", "style", "The genre's own", CP.cat.styles || []) : null;
+  const style = t.option === "genre" ? pickOf("Style", "style", "The genre's own", CP.cat.styles || [], r => r.group) : null;
   const fieldPick = t.option === "genre" ? pickOf("Field", "field", "Not chosen", CP.cat.fields || [], r => r.group) : null;
   const naming = t.option === "name" ? el("label", { class: "small" }, "Call it ", el("input", { type: "text", value: CP.styleName || "", placeholder: "My style", style: "width:14em",
     oninput: e => { CP.styleName = e.target.value; } })) : null;
   const sourcePick = t.option === "source" ? pickOf("Source", "source", "Another source",
     (CP.cat.sources || []).map(x => Object.assign({}, x, { name: x.name + (x.rules ? ` — ${x.rules} rules learned` : "") })), r => r.wave_name) : null;
-  // a kind of document (the genre library): chosen here, or left to the brief to name
-  const genre = t.option === "genre" ? el("label", { class: "small" }, "Kind of document ", el("select", { onchange: e => { CP.genre = e.target.value; } },
-    el("option", { value: "", selected: !CP.genre }, t.id === "write.check" ? "Not chosen — judge the grammar only" : "Named in my brief"),
-    (CP.cat.families || []).map(f => el("optgroup", { label: f.name }, (CP.cat.genres || []).filter(g => g.family === f.id)
-      .map(g => el("option", { value: g.id, selected: g.id === CP.genre }, g.name[0].toUpperCase() + g.name.slice(1))))))) : null;
-  return el("div", {}, field, el("div", { class: "akline" },
+  // the type of document (the universal taxonomy): the area first, then the type; then, if wished, what it is for
+  const DT = (CP.cat.doctypes || { domains: [], purposes: [] }), dom = DT.domains.find(d => String(d.n) === String(CP.area));
+  const genre = t.option === "genre" ? el("div", { class: "akline doctypepick" },
+    el("label", { class: "small" }, el("b", {}, "1. Area "), el("select", { onchange: e => { CP.area = e.target.value; CP.doctype = ""; cpSave("qb:caps:area", CP.area); cpSave("qb:caps:doctype", ""); cpDraw(); } },
+      el("option", { value: "", selected: !CP.area }, "Choose the area…"),
+      DT.domains.map(d => el("option", { value: d.n, selected: String(d.n) === String(CP.area) }, d.name)))),
+    el("label", { class: "small" }, el("b", {}, "2. Type of document "), el("select", { disabled: !dom, onchange: e => { CP.doctype = e.target.value; cpSave("qb:caps:doctype", CP.doctype); CP.err = ""; cpDraw(); } },
+      el("option", { value: "", selected: !CP.doctype }, dom ? "Choose the type…" : "Choose the area first"),
+      ...(dom ? dom.families.flatMap(f => { const opts = f.types.map(x => el("option", { value: x.id, selected: x.id === CP.doctype }, x.name + (x.full ? "  ★" : "")));
+        return f.name ? [el("optgroup", { label: f.name }, opts)] : opts; }) : []))),
+    el("label", { class: "small" }, "Purpose ", el("select", { onchange: e => { CP.purpose = e.target.value; } },
+      el("option", { value: "", selected: !CP.purpose }, "As usual for the type"), DT.purposes.map(x => el("option", { value: x, selected: x === CP.purpose }, x)))),
+    el("span", { class: "small muted" }, "★ = QueryBook holds a full record for this type; the others are planned from the type's own expected parts.")) : null;
+  // the writer's controls: every aspect of the writing is the person's to set; anything left alone follows the type and the style
+  const setCtl = (k, v) => { if (v) CP.controls[k] = v; else delete CP.controls[k]; cpSave("qb:caps:controls", JSON.stringify(CP.controls)); };
+  const nset = Object.keys(CP.controls || {}).length;
+  const controls = t.id === "write.doc" && CP.cat.controls ? el("details", { class: "small ctlbox", open: nset > 0 },
+    el("summary", {}, el("b", {}, "3. Your controls"), ` — tone, voice, formality, length and more${nset ? ` (${nset} set)` : " (all as usual for the type)"}`),
+    el("div", { class: "ctlgrid" },
+      Object.keys(CP.cat.controls).map(k => el("label", { class: "small" }, (CP.cat.control_names || {})[k] || k, " ",
+        el("select", { onchange: e => setCtl(k, e.target.value) }, el("option", { value: "", selected: !CP.controls[k] }, "—"),
+          CP.cat.controls[k].map(v => el("option", { value: v, selected: CP.controls[k] === v }, v))))),
+      el("label", { class: "small" }, "Length (words) ", el("input", { type: "number", min: 0, step: 50, style: "width:7em", value: CP.controls.words || "", oninput: e => setCtl("words", e.target.value) }))),
+    nset ? el("button", { type: "button", class: "btn ghost", onclick: () => { CP.controls = {}; cpSave("qb:caps:controls", "{}"); cpDraw(); } }, "Clear my settings") : null) : null;
+  return el("div", {}, genre, controls, field, el("div", { class: "akline" },
     el("button", { type: "button", class: "btn", disabled: CP.busy, onclick: go }, CP.busy ? "Working…" : t.id === "write.doc" ? "Plan it" : t.id === "write.learn" ? "Learn from this page" : label),
-    lang, genre, fieldPick, style, naming, sourcePick,
+    lang, fieldPick, style, naming, sourcePick,
     single ? el("span", { class: "small muted" }, "The answer opens on the Ask page, with its sources.") : null));
+}
+
+/* the style template library: every template by kind, what it asks of the writer, and one click to use it */
+function cpStyleLibrary(c) {
+  const rows = CP.cat.styles || [], groups = [...new Set(rows.map(r => r.group))];
+  const use = id => { CP.style = id; cpSave("qb:caps:style", id); CP.task[c.id] = "write.doc"; cpDraw(); };
+  return el("div", {},
+    el("p", { class: "small" }, CP.style ? ["In use: ", el("b", {}, (rows.find(r => r.id === CP.style) || { name: CP.style }).name), " ",
+      el("button", { type: "button", class: "btn ghost", onclick: () => { CP.style = ""; cpSave("qb:caps:style", ""); cpDraw(); } }, "Use the genre's own instead")]
+      : "No template chosen: each kind of document uses its own usual style."),
+    groups.map(gname => el("div", {}, el("h3", { style: "margin:14px 0 6px" }, gname),
+      el("div", { class: "stylegrid" }, rows.filter(r => r.group === gname).map(r => el("div", { class: "card stylecard" + (r.id === CP.style ? " on" : "") },
+        el("b", {}, r.name + (r.by === "you" ? " (yours)" : "")),
+        el("p", { class: "small", style: "margin:4px 0" }, r.about),
+        r.for ? el("p", { class: "small muted", style: "margin:4px 0" }, "Good for: " + r.for) : null,
+        r.asks ? el("details", { class: "small" }, el("summary", {}, "What it asks of the writer"), el("p", { class: "small muted" }, r.asks)) : null,
+        el("button", { type: "button", class: "btn" + (r.id === CP.style ? "" : " ghost"), onclick: () => use(r.id) }, r.id === CP.style ? "In use — write with it →" : "Use this style")))))));
 }
 
 async function cpDo(key, body) {
@@ -140,7 +180,7 @@ async function cpSpeak(text) {
 async function cpStage(t, stage, draft) {
   const text = (CP.text[t.id] || "").trim();
   if (stage === "revise" && !(CP.notes || "").trim()) { CP.err = "Say what to change first."; return cpDraw(); }
-  await cpDo(t.id, { task: t.id, text, option: CP.genre || "", style: CP.style || "", field: CP.field || "", stage, draft: draft || "", notes: CP.notes || "", own: CP.own || "" });
+  await cpDo(t.id, { task: t.id, text, option: CP.genre || "", style: CP.style || "", field: CP.field || "", stage, draft: draft || "", notes: CP.notes || "", own: CP.own || "", doctype: CP.doctype || "", purpose: CP.purpose || "", controls: CP.controls || {} });
   if (stage === "revise") CP.notes = "";
 }
 
@@ -166,6 +206,16 @@ function cpResult(t, r) {
         oninput: e => { CP.own = e.target.value; } }, CP.own || "")) : null,
     r.voice_text && r.voice_text !== r.text ? el("details", { class: "small", open: !(r.voice || {}).passed }, el("summary", {}, "VOICE check — verified, owned, insightful, clear, engaging (QueryBook's rules, no AI)"), el("pre", { class: "capout" }, r.voice_text)) : null,
     r.story_text && r.story_text !== r.text ? el("details", { class: "small", open: !(r.story || {}).passed }, el("summary", {}, "Story check — six common habits (QueryBook's rules, no AI)"), el("pre", { class: "capout" }, r.story_text)) : null,
+    r.essay_text && r.essay_text !== r.text && !(r.text || "").includes("STRUCTURE FOR THE READER") ? el("details", { class: "small", open: !(r.essay || {}).passed }, el("summary", {}, "Structure for the reader — title, introduction, index, key terms, conclusion (QueryBook's rules, no AI)"), el("pre", { class: "capout" }, r.essay_text)) : null,
+    // analysis -> generation: the controls are set from what was read, and the type too when the rules found one
+    r.analysis ? el("div", { class: "akline" }, el("button", { type: "button", class: "btn", onclick: () => {
+        CP.controls = Object.fromEntries(Object.entries(r.analysis.controls).filter(([, v]) => v)); cpSave("qb:caps:controls", JSON.stringify(CP.controls));
+        const lt = (r.analysis.likely_types || [])[0];
+        if (lt) { CP.doctype = lt.id; CP.area = lt.id.split("-")[0]; cpSave("qb:caps:doctype", CP.doctype); cpSave("qb:caps:area", CP.area); }
+        if ((r.analysis.styles || [])[0]) { CP.style = r.analysis.styles[0].id; cpSave("qb:caps:style", CP.style); }
+        CP.task.write = "write.doc"; cpDraw(); } }, "Write with these settings →"),
+      el("span", { class: "small muted" }, "Sets tone, point of view, formality and the rest from this reading. You can change any of them.")) : null,
+    r.settings_text ? el("details", { class: "small", open: (r.settings_check || []).some(x => x.ok === false) }, el("summary", {}, "Your settings, checked against the draft"), el("pre", { class: "capout" }, r.settings_text)) : null,
     r.editor_text ? el("details", { class: "small", open: true }, el("summary", {}, "An editor's second reading — it does not rewrite (made by: " + (r.editor_by || "AI") + ")"), el("pre", { class: "capout" }, r.editor_text)) : null,
     t.id === "write.doc" && r.stage === "plan" && r.can_draft ? el("div", { class: "akline" },
       el("button", { type: "button", class: "btn", disabled: CP.busy, onclick: () => cpStage(t, "draft") }, CP.busy ? "Writing…" : "Write it to this plan"),

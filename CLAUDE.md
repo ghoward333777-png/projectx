@@ -301,6 +301,14 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   labels a claim verified (a citation is not a verification). The final decisions are the person's. Keep all of it.
 - Stories are read for six habits instead of VOICE (`writing.fiction_audit`, `FICTION_RULES`, task `write.story_check`): formal
   dialogue, point-of-view drift ("one scene, one head"), vague stakes, one-speed pacing, starting too early, overwriting.
+- TYPE FIRST (the user, 2026-11-14): the person is asked for the document's Area and Type before anything is planned or checked
+  (`doctypes.json`, made by `tools/build_doctypes.py` from the user's own list `tools/doctypes_source.txt` — 45 domains, 917 types;
+  `--check` is in the tests). Never edit the JSON by hand; never add parts the list does not give (`genre_from_type` says "general
+  shape" when it gives none). A type with a full genre record uses it.
+- Analysis AND generation, all under the user's control: `analyze_document` (likelihoods, "cannot tell" allowed), the writer's
+  controls (`CONTROLS`: tone, point of view, formality, length … — they override the type; measurable ones are checked), the style
+  template library (42 templates in 7 kinds, by manner, never a named author), `essay_audit` (five structural elements). The aim
+  is text that reads as the person's own, not generic AI writing: add controls and templates as rows, never remove one.
 - The writer and the critic read the same record. No genre named → ask, never guess. Legal genres stay "a draft for a
   qualified lawyer"; a crime report never calls an accused person guilty. A model's draft is labelled (`by`).
 

@@ -1,0 +1,1178 @@
+1. Books, Publishing & Long-Form Works
+Document type	Typical elements
+Book	Title, author, copyright/front matter, table of contents, introduction/preface, chapters, sections, figures/tables, notes, references, appendices, index
+Booklet	Cover/title, introduction, short sections, illustrations, instructions/information, contact/resource information
+Monograph	Title, abstract/overview, focused thesis, chapters, evidence, citations, bibliography
+Textbook	Units, chapters, learning objectives, explanatory text, examples, figures, exercises, summaries, glossary, references, index
+Reference book	Organized entries, definitions/facts, cross-references, citations, indexes
+Handbook	Topic-based sections, procedures, recommendations, reference material, appendices
+Manual	Purpose, requirements, procedures, warnings, diagrams, troubleshooting, references
+Guidebook	Overview, categorized guidance, recommendations, instructions, maps/data/resources
+Workbook	Instruction, exercises, prompts, worksheets, examples, answer areas
+Encyclopedia entry	Subject heading, overview, factual sections, references, related entries
+Dictionary entry	Headword, pronunciation, definitions, usage, etymology, examples
+Anthology	Editor's introduction, individual works, author information, notes
+Biography	Subject background, chronology, life events, achievements, interpretation, sources
+Autobiography	First-person chronology, experiences, reflection, supporting material
+Memoir	Selected experiences, narrative episodes, reflections, thematic development
+E-book	Book structure plus hyperlinks, metadata and potentially multimedia/interactivity
+Rich-media book	Text, images, audio, video, charts, interactive questions, forms, simulations and linked resources
+
+For QueryBook specifically, I would treat rich-media books as their own document class, rather than merely considering them electronic books.
+
+2. Journalism & News
+Document type	Typical elements
+Newspaper article	Headline, byline, dateline, lead, key facts, supporting details, quotations, background
+Breaking-news report	Headline, immediate facts, verified developments, sources, updates
+Feature article	Narrative lead, subject context, interviews, descriptive sections, conclusion
+Investigative article	Investigation question, evidence, records, interviews, findings, response from affected parties
+News analysis	Event summary, context, interpretation, evidence, implications
+Editorial	Issue, institutional position, argument, supporting evidence, conclusion
+Op-ed	Author viewpoint, thesis, arguments, evidence/examples, conclusion
+Column	Recurring author perspective, topic, commentary, conclusion
+Interview	Introduction, interviewer questions, responses, contextual notes
+Review	Work/product examined, criteria, observations, evaluation, recommendation
+Fact-check	Claim, source, evidence, verification process, conclusion/rating
+News brief	Headline, concise event description, key facts
+Press dispatch	Location/date, event description, observations, quotations
+Obituary	Identity, life history, accomplishments, survivors, death information where appropriate
+3. Magazines, Blogs & Digital Publishing
+Type	Elements
+Magazine article	Headline, deck/subheading, byline, opening hook, body, quotations, images, conclusion
+Magazine feature	Narrative opening, personalities/events, context, extensive reporting, conclusion
+Blog post	Title, introduction, headings, main discussion, links/resources, conclusion
+Explainer	Question/topic, background, explanation, examples, takeaway
+Listicle	Introduction, numbered/ranked items, explanation of each
+How-to article	Goal, requirements, steps, examples, cautions, outcome
+Buying guide	Product category, criteria, alternatives, comparisons, recommendations
+Newsletter	Header, introductory message, stories/updates, links, call to action
+FAQ	Questions paired with concise answers
+Knowledge-base article	Problem/question, explanation, solution/procedure, related resources
+4. Essays & Argumentative Documents
+
+Important distinction: essay should be a family, rather than a single document type.
+
+Subclasses include:
+
+Analytical essay
+Argumentative essay
+Expository essay
+Persuasive essay
+Compare-and-contrast essay
+Cause-and-effect essay
+Definition essay
+Descriptive essay
+Narrative essay
+Critical essay
+Reflective essay
+Philosophical essay
+Historical essay
+Literary essay
+Personal essay
+Academic essay
+
+Common elements include question/topic → thesis → arguments → evidence → counterarguments where appropriate → synthesis → conclusion → references.
+
+5. Reports
+
+This should similarly become a major superclass.
+
+General report
+
+Purpose, scope, methodology, findings, analysis, conclusions, recommendations, appendices.
+
+Business report
+
+Executive summary, business problem, background, methodology, findings, analysis, recommendations, financial/operational implications.
+
+Annual report
+
+Organization overview, leadership commentary, activities/performance, financial information, risks, governance and outlook.
+
+Progress report
+
+Objective, reporting period, completed work, current status, obstacles, metrics, upcoming work.
+
+Investigation report
+
+Mandate, allegations/issues, methodology, evidence, interviews/records, findings, conclusions.
+
+Incident report
+
+Incident identification, time/place, involved parties, factual description, consequences and follow-up.
+
+Audit report
+
+Scope, standards/criteria, testing, findings, exceptions, conclusions/opinion.
+
+Inspection report
+
+Object/site inspected, criteria, observations, deficiencies, photographs/evidence, recommendations.
+
+Evaluation report
+
+Program/object evaluated, criteria, methodology, evidence, results, conclusions.
+
+Feasibility report
+
+Proposal, requirements, alternatives, technical feasibility, operational feasibility, economics, risks, recommendation.
+
+After-action report
+
+Event/objective, intended outcome, actual outcome, successes, failures, lessons learned, corrective actions.
+
+6. Research, Academic & Scholarly Documents
+Type	Core elements
+Research paper	Abstract, question, literature, methodology, results, discussion, conclusion, references
+Academic article	Abstract, introduction, discipline-specific body/methodology, findings/argument, references
+Thesis	Research problem, literature review, methodology, findings, analysis, conclusions, bibliography
+Dissertation	Extended thesis structure with original research contribution
+Literature review	Research question, search/selection framework, literature synthesis, gaps, conclusions
+Systematic review	Protocol/question, eligibility criteria, search methodology, study selection, synthesis
+Meta-analysis	Study-selection methodology, datasets, statistical combination, results, limitations
+Case study	Subject/problem, context, evidence, analysis, results, lessons
+Research proposal	Question, rationale, prior literature, proposed methodology, resources, schedule
+Conference paper	Abstract, problem, work/method, findings, conclusions
+Working paper	Preliminary research, methodology/argument, findings, limitations
+Technical paper	Problem, technical theory, implementation/method, testing, results
+Position paper	Issue, position, evidence, arguments, recommendations
+7. Scientific Documents
+
+This deserves a substantial hierarchy.
+
+Experimental research article
+
+Abstract → introduction → methods → materials → results → discussion → conclusion → references → supplementary data
+
+Other scientific types include:
+
+Laboratory report
+Experimental protocol
+Research protocol
+Clinical study report
+Clinical-trial protocol
+Observational study
+Cohort study
+Case-control study
+Scientific review
+Systematic review
+Meta-analysis
+Scientific hypothesis paper
+Methods paper
+Dataset paper
+Replication study
+Field study
+Laboratory notebook
+Research notebook
+Scientific correspondence
+Technical note
+Scientific poster
+Conference abstract
+Preprint
+Supplementary-material document
+Data-management plan
+Statistical-analysis plan
+Research ethics submission
+Research grant application
+
+Each can be modeled around some combination of question, hypothesis, variables, methodology, evidence/data, analysis, reproducibility and conclusions.
+
+8. Analysis Documents
+
+This is another superclass that QueryBook should recognize independently from subject matter.
+
+Examples:
+
+General analysis
+Comparative analysis
+Quantitative analysis
+Qualitative analysis
+Statistical analysis
+Descriptive analysis
+Diagnostic analysis
+Predictive analysis
+Prescriptive analysis
+Causal analysis
+Scenario analysis
+Sensitivity analysis
+Trend analysis
+Gap analysis
+Root-cause analysis
+Cost-benefit analysis
+Risk analysis
+Impact analysis
+Policy analysis
+Competitive analysis
+Market analysis
+Industry analysis
+Technical analysis
+Strategic analysis
+Historical analysis
+Content analysis
+Discourse analysis
+Sentiment analysis
+
+The underlying structure is generally:
+
+Question → objects/data → analytical framework → evidence → relationships/patterns → interpretation → findings → confidence/limitations → implications.
+
+9. Comparison Documents
+
+Comparison should also be modeled separately.
+
+Types include:
+
+Side-by-side comparison
+Product comparison
+Vendor comparison
+Technology comparison
+Company comparison
+Investment comparison
+Policy comparison
+Scientific-method comparison
+Legal comparison
+Jurisdiction comparison
+Historical comparison
+Competitive benchmarking
+Feature matrix
+Cost comparison
+Cost-benefit comparison
+
+Core schema:
+
+Objects → criteria → measurements/evidence → similarities → differences → strengths → weaknesses → tradeoffs → conclusion.
+
+10. Business Documents
+
+This becomes enormous.
+
+Strategy
+Business plan
+Strategic plan
+Operating plan
+Growth plan
+Expansion plan
+Turnaround plan
+Go-to-market plan
+Market-entry plan
+Digital-transformation plan
+Executive communication
+Business brief
+Executive brief
+Executive summary
+Decision memo
+Strategy memo
+Board memo
+Board package
+Management report
+Operations
+Standard operating procedure
+Work instruction
+Process document
+Policy
+Procedure
+Operations manual
+Quality manual
+Checklist
+Business-continuity plan
+Disaster-recovery plan
+Projects
+Project charter
+Project plan
+Requirements document
+Statement of work
+Status report
+Risk register
+Issue log
+Change request
+Postmortem
+Lessons-learned report
+Sales/marketing
+Sales proposal
+Marketing plan
+Campaign brief
+Creative brief
+Customer proposal
+RFP
+RFQ
+RFI
+Vendor proposal
+Case study
+Product brochure
+Product sheet
+11. Financial & Accounting Documents
+Financial statements
+Balance sheet
+Income statement
+Cash-flow statement
+Statement of shareholders' equity
+Notes to financial statements
+Financial reports
+Annual financial report
+Quarterly report
+Management accounts
+Budget report
+Variance report
+Audit report
+Tax report
+Analytical finance
+Financial analysis
+Ratio analysis
+Valuation report
+Credit analysis
+Investment analysis
+Portfolio analysis
+Capital-allocation analysis
+Financial forecast
+Financial model documentation
+
+Core elements frequently become:
+
+period → accounts/data → assumptions → calculations → historical comparisons → ratios/KPIs → interpretation → forecast/risk.
+
+12. Investment, Securities & Stock-Market Documents
+
+A particularly useful QueryBook family:
+
+Equity research report
+Stock analysis
+Company analysis
+Fundamental analysis
+Technical analysis
+Earnings analysis
+Earnings preview
+Earnings recap
+Investment thesis
+Investment memorandum
+Portfolio report
+Fund report
+Analyst note
+Market commentary
+Economic outlook
+Sector report
+Industry report
+Credit research report
+Bond analysis
+Risk assessment
+Valuation report
+M&A analysis
+Due-diligence report
+Investor presentation
+
+Typical analytical structure:
+
+security/company → market context → financials → catalysts → valuation → risks → scenarios → thesis/conclusion.
+
+13. Industry & Market Intelligence
+Industry analysis
+Market research report
+Market-size report
+Competitive-intelligence report
+Competitor profile
+Market-share analysis
+Consumer analysis
+Customer segmentation report
+Demand analysis
+Supply analysis
+Pricing analysis
+Trend report
+Forecast
+Technology landscape
+Vendor landscape
+Benchmark report
+SWOT analysis
+PEST/PESTLE analysis
+Porter's Five Forces analysis
+Opportunity analysis
+14. Whitepapers & Thought Leadership
+Whitepaper
+
+Common structure:
+
+title → executive summary → problem → background → evidence → proposed approach → benefits → implementation/use cases → conclusion → references
+
+Subtypes:
+
+Technical whitepaper
+Business whitepaper
+Policy whitepaper
+Scientific whitepaper
+Government whitepaper
+Industry whitepaper
+Technology whitepaper
+Product whitepaper
+Investment whitepaper
+Standards whitepaper
+Vision paper
+Concept paper
+Position paper
+15. Technology & Engineering
+
+A major QueryBook category.
+
+Architecture
+System architecture document
+Solution architecture
+Enterprise architecture
+Software architecture document
+Network architecture
+Data architecture
+Cloud architecture
+Security architecture
+AI-system architecture
+Specifications
+Technical specification
+Functional specification
+Product specification
+Design specification
+Engineering specification
+Interface specification
+API specification
+Protocol specification
+Data specification
+Hardware specification
+
+Core specification structure:
+
+scope → terminology → requirements → architecture → components → interfaces → data → behavior → constraints → performance → security → testing → acceptance criteria.
+
+Additional types:
+
+Software requirements specification
+Product requirements document
+System requirements document
+Engineering drawing package
+Design document
+API documentation
+User documentation
+Developer documentation
+Installation guide
+Configuration guide
+Maintenance manual
+Troubleshooting guide
+Release notes
+Change log
+Test plan
+Test case
+Test report
+Verification report
+Validation report
+Failure analysis
+Root-cause report
+16. Patents & Intellectual Property
+Patent-family documents
+Invention disclosure
+Prior-art search report
+Patentability analysis
+Provisional patent application
+Nonprovisional utility application
+Design patent application
+Plant patent application
+International/PCT application
+Continuation application
+Divisional application
+Specification
+Abstract
+Claims
+Drawings
+Information disclosure materials
+Office-action response
+Amendment
+Appeal materials
+Patent opinion
+Freedom-to-operate analysis
+Infringement analysis
+Validity analysis
+Provisional patent application
+
+A practical content model is:
+
+title → inventor information → technical field → background/problem → invention overview → detailed description → alternative embodiments → examples → drawings/figures → supporting technical material.
+
+Patent classification itself can also be connected to established IPC/CPC classification systems.
+
+17. Legal Documents
+
+Legal documents should not be represented by one generic "legal" class. Modern legal taxonomies distinguish matters, work types, participants, roles, areas of law, process elements, and information types. The SALI Alliance similarly describes LMSS as a shared language for matters, time, documents and organizations.
+
+Court pleadings
+Complaint
+Petition
+Answer
+Counterclaim
+Cross-claim
+Third-party complaint
+Reply
+Motions
+Motion
+Motion to dismiss
+Motion for summary judgment
+Motion to compel
+Motion in limine
+Motion for reconsideration
+Emergency motion
+
+Typical structure:
+
+court → caption → parties → case number → title → requested relief → facts → legal grounds → argument → conclusion/prayer → signature → service information.
+
+Briefs
+Trial brief
+Appellate brief
+Opening brief
+Answering brief
+Reply brief
+Amicus brief
+Memorandum of points and authorities
+
+Typical elements:
+
+caption → questions/issues → procedural/factual background → applicable standard → argument → authorities → conclusion.
+
+Evidence/discovery
+Interrogatories
+Requests for admission
+Requests for production
+Discovery responses
+Deposition transcript
+Deposition notice
+Subpoena
+Declaration
+Affidavit
+Exhibit
+Expert report
+Judicial documents
+Order
+Judgment
+Opinion
+Decision
+Findings of fact
+Conclusions of law
+Writ
+Injunction
+Transactional law
+Contract
+Agreement
+Amendment
+Addendum
+Memorandum of understanding
+Letter of intent
+NDA
+License agreement
+Employment agreement
+Partnership agreement
+Operating agreement
+Shareholders agreement
+Asset-purchase agreement
+Stock-purchase agreement
+Merger agreement
+Loan agreement
+Promissory note
+Security agreement
+Guarantee
+Lease
+Deed
+Easement
+Assignment
+Release
+Settlement agreement
+Estate law
+Will
+Trust
+Codicil
+Power of attorney
+Advance directive
+Probate petition
+
+This breadth is precisely why established legal document classification systems use detailed taxonomies rather than simply labeling material "legal document."
+
+18. Government & Public Policy
+Legislation
+Bill
+Act/statute
+Regulation
+Rule
+Ordinance
+Resolution
+Executive order
+Administrative order
+Government notice
+Regulatory guidance
+Policy document
+Policy brief
+Policy paper
+Policy analysis
+Impact assessment
+Regulatory-impact analysis
+Government report
+Commission report
+Congressional/parliamentary report
+Hearing transcript
+Government budget
+Public consultation
+Public comment
+Agency decision
+Permit
+License
+Application
+Government form
+19. Political Documents
+Political analysis
+Political commentary
+Political platform
+Manifesto
+Campaign platform
+Campaign brief
+Candidate profile
+Opposition research report
+Legislative analysis
+Election analysis
+Poll analysis
+Public-opinion report
+Political-risk analysis
+Geopolitical analysis
+Foreign-policy analysis
+Speech
+Debate transcript
+Policy statement
+
+Political analysis typically follows:
+
+issue/event → actors → institutions → history → evidence/data → competing explanations → incentives → likely implications → limitations.
+
+20. Social-Science Documents
+
+Applicable to sociology, psychology, economics, anthropology, political science, communications, education and related fields:
+
+Empirical research paper
+Ethnography
+Field study
+Case study
+Behavioral study
+Longitudinal study
+Cross-sectional study
+Survey research
+Interview study
+Focus-group report
+Demographic analysis
+Social-impact assessment
+Program evaluation
+Economic study
+Sociological analysis
+Psychological study
+Content analysis
+Qualitative study
+Quantitative study
+Mixed-methods study
+21. Surveys & Opinion Research
+
+Survey documents themselves should have subclasses:
+
+Survey instrument
+
+title → purpose → instructions → screening questions → demographic questions → substantive questions → scales/options → branching logic → closing
+
+Survey research report
+
+research question → population → sampling → instrument → collection method → response information → results → cross-tabs/statistics → limitations → conclusions
+
+Other types:
+
+Questionnaire
+Poll
+Census questionnaire
+Customer-satisfaction survey
+Employee survey
+Market-research survey
+Political poll
+Exit poll
+Academic survey
+Interview questionnaire
+Focus-group discussion guide
+22. Medical & Healthcare Documents
+
+This is another enormous family:
+
+Patient/clinical
+Medical record
+History and physical
+Progress note
+Consultation note
+Operative report
+Discharge summary
+Nursing note
+Therapy note
+Diagnostic report
+Radiology report
+Pathology report
+Laboratory report
+Medication record
+Treatment plan
+Care plan
+Referral
+Prescription
+Healthcare research/administration
+Clinical guideline
+Clinical protocol
+Clinical trial report
+Drug monograph
+Safety report
+Medical review
+Medical case report
+Health-technology assessment
+Public-health report
+Epidemiological report
+Insurance claim
+Explanation of benefits
+Prior-authorization document
+23. Education Documents
+Lesson plan
+Curriculum
+Syllabus
+Course outline
+Lecture notes
+Study guide
+Tutorial
+Assignment
+Worksheet
+Examination
+Quiz
+Answer key
+Rubric
+Student paper
+Research project
+Lab assignment
+Book report
+Assessment report
+Transcript
+Diploma
+Certificate
+Recommendation letter
+24. Screen, Stage & Entertainment Writing
+Screenplay
+
+title page → scene headings → action → characters → dialogue → parentheticals → transitions
+
+Subtypes:
+
+Feature screenplay
+Television screenplay
+Episode script
+Pilot
+Short-film script
+Documentary script
+Animation script
+Commercial script
+Web-video script
+YouTube script
+
+Additional creative-production documents:
+
+Treatment
+Synopsis
+Logline
+Story bible
+Series bible
+Character bible
+Episode outline
+Beat sheet
+Scene breakdown
+Storyboard specification
+Shooting script
+Shot list
+Call sheet
+Production schedule
+Production report
+Continuity report
+25. Investor & Fundraising Documents
+
+This is an especially useful class for your AtomGraph.ai / QueryBook work.
+
+Investor pitch deck/document
+
+company → problem → solution → technology/product → market → competition → advantage → business model → traction → go-to-market → team → financials → funding request → use of funds → milestones
+
+Related types:
+
+Investor brief
+Executive investor summary
+Investment memorandum
+Private-placement memorandum
+Investor update
+Shareholder letter
+Funding proposal
+Capital plan
+Financial projections
+Business valuation
+Due-diligence package
+Data-room index
+Term sheet
+Cap-table report
+26. Sales, Procurement & Commercial Documents
+Quote
+Estimate
+Proposal
+Bid
+Tender
+RFP
+RFQ
+RFI
+Purchase order
+Sales order
+Invoice
+Receipt
+Statement
+Bill of materials
+Vendor assessment
+Procurement report
+Product catalog
+Price list
+Service-level agreement
+Statement of work
+27. Corporate Governance
+Articles of incorporation
+Bylaws
+Operating agreement
+Corporate resolution
+Board resolution
+Board minutes
+Committee minutes
+Shareholder resolution
+Corporate policy
+Code of conduct
+Ethics policy
+Governance charter
+Compliance report
+Risk report
+Internal-control documentation
+Corporate record
+28. Human Resources
+Job description
+Job posting
+Resume/CV
+Cover letter
+Employment application
+Offer letter
+Employment agreement
+Employee handbook
+HR policy
+Performance review
+Performance-improvement plan
+Training document
+Compensation report
+Benefits document
+Disciplinary notice
+Termination documentation
+Organizational chart
+Workforce analysis
+29. Insurance
+Insurance policy
+Binder
+Certificate of insurance
+Endorsement
+Claim
+Claim report
+Loss notice
+Adjuster report
+Underwriting report
+Risk assessment
+Actuarial report
+Coverage analysis
+Settlement documentation
+30. Real Estate & Construction
+Property listing
+Appraisal
+Purchase agreement
+Lease
+Deed
+Title report
+Inspection report
+Survey
+Property-condition report
+Environmental assessment
+Development proposal
+Architectural specification
+Construction plan
+Blueprint/drawing
+Construction estimate
+Bid
+Change order
+Daily construction report
+Punch list
+31. Manufacturing & Industrial
+Product specification
+Manufacturing specification
+Bill of materials
+Work order
+Assembly instruction
+Process sheet
+Quality-control report
+Inspection report
+Nonconformance report
+Corrective-action report
+Preventive-action report
+Safety procedure
+Equipment manual
+Maintenance log
+Production report
+Supply-chain report
+32. Transportation, Logistics & Aviation
+Shipping manifest
+Bill of lading
+Packing list
+Customs declaration
+Freight invoice
+Delivery receipt
+Route plan
+Fleet report
+Maintenance record
+Vehicle inspection
+Flight plan
+Aircraft log
+Maintenance manual
+Safety report
+Accident/incident report
+33. Environmental & Energy
+Environmental-impact assessment
+Environmental-impact statement
+Sustainability report
+ESG report
+Environmental audit
+Climate-risk report
+Emissions report
+Energy audit
+Geological report
+Resource assessment
+Environmental permit
+Conservation plan
+34. Communications & Correspondence
+Letter
+Formal letter
+Personal letter
+Business letter
+Email
+Memo
+Memorandum
+Circular
+Notice
+Announcement
+Bulletin
+Advisory
+Alert
+Invitation
+Thank-you letter
+Complaint letter
+Demand letter
+Recommendation letter
+Open letter
+35. Meetings & Organizational Records
+Agenda
+Minutes
+Meeting notes
+Transcript
+Action-item list
+Decision log
+Resolution
+Attendance record
+Workshop report
+Conference proceedings
+36. Forms & Structured Documents
+Application
+Registration form
+Intake form
+Questionnaire
+Order form
+Consent form
+Authorization form
+Waiver
+Claim form
+Tax form
+Government form
+Medical form
+Inspection checklist
+Assessment form
+Evaluation form
+Ballot
+
+These differ fundamentally from narrative documents because they primarily consist of fields, labels, allowed values, rules and entered responses.
+
+37. Data-Centric Documents
+
+Modern systems also need document classifications that older library taxonomies often underemphasize:
+
+Dataset
+Data dictionary
+Schema
+Metadata record
+Data catalog
+Table
+Spreadsheet
+Statistical table
+Dashboard report
+Machine-readable report
+XML document
+JSON document
+CSV dataset
+Database export
+Knowledge graph
+Ontology
+Taxonomy
+Controlled vocabulary
+
+A document taxonomy can include attributes beyond subject, including document type, author and publication year. This becomes particularly important for QueryBook because those attributes can coexist rather than forcing a document into just one category.
+
+38. AI & Machine-Learning Documents
+
+I would add an entirely modern class:
+
+Model card
+Dataset card
+System card
+AI evaluation report
+Benchmark report
+Training-data description
+AI safety assessment
+Bias/fairness assessment
+Red-team report
+Model specification
+Prompt specification
+Agent specification
+AI architecture specification
+Inference specification
+Evaluation dataset
+AI governance document
+AI risk report
+AI incident report
+39. Security, Intelligence & Cybersecurity
+Threat assessment
+Threat-intelligence report
+Vulnerability report
+Penetration-test report
+Security audit
+Security assessment
+Incident-response report
+Forensic report
+Intelligence report
+Intelligence estimate
+Situation report
+Risk assessment
+Security policy
+Security architecture
+Business-impact analysis
+Disaster-recovery plan
+40. Historical & Archival Documents
+Diary
+Journal
+Personal correspondence
+Manuscript
+Chronicle
+Oral-history transcript
+Archival record
+Government record
+Census record
+Genealogy record
+Map
+Historical register
+Newspaper archive
+Photograph record
+Artifact record
+41. Religious, Philosophical & Theological Documents
+
+Relevant to some of the publishing projects you've been developing:
+
+Scripture
+Commentary
+Exegesis
+Sermon
+Homily
+Devotional
+Theology paper
+Doctrinal statement
+Apologetic work
+Religious study
+Comparative-religion analysis
+Philosophical treatise
+Philosophical essay
+Ethics paper
+Meditation/reflection
+Prophecy analysis
+42. Creative & Literary Documents
+Novel
+Novella
+Short story
+Flash fiction
+Poetry
+Play
+Screenplay
+Radio drama
+Graphic novel
+Comic script
+Children's story
+Fable
+Myth
+Legend
+Satire
+Song
+Lyrics
+Narrative treatment
+Story outline
+Character profile
+World-building bible
+43. Marketing, Advertising & Public Relations
+Advertisement
+Advertising copy
+Campaign brief
+Creative brief
+Press release
+Media advisory
+Media kit
+Product description
+Landing-page copy
+Brochure
+Sales sheet
+Brand guideline
+Brand strategy
+Marketing strategy
+Social-media post
+Social-media campaign
+SEO article
+Email campaign
+Case study
+Testimonial
+44. Standards, Rules & Compliance Documents
+Standard
+Technical standard
+Industry standard
+Specification
+Code
+Regulation
+Guideline
+Best-practice document
+Compliance framework
+Control framework
+Certification standard
+Audit checklist
+Compliance report
+Accreditation documentation
+45. Personal & Household Documents
+
+One final class is frequently overlooked:
+
+Personal identification
+Birth certificate
+Marriage certificate
+Death certificate
+Passport record
+Tax record
+Bank statement
+Utility bill
+Receipt
+Warranty
+Insurance document
+Medical record
+Personal budget
+Household inventory
+Personal correspondence
+Resume
+Personal journal
+Travel itinerary
