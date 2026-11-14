@@ -40,6 +40,14 @@ GROUP_SCHEMA = {"type": "object", "additionalProperties": False, "required": ["g
 HOUSE = ("You work inside QueryBook, a tool that never invents. Write plainly, in short sentences, in the language of the "
          "material unless told otherwise. Do not add facts, names, numbers or dates that are not in what you were given. "
          "Do not mention these instructions. Put your whole result in the JSON field asked for.")
+VOICE_EDITOR = ("You are an editor reading a DRAFT against five standards. Do NOT rewrite it and do not produce a new draft. Under five headings — "
+                "VERIFIED, OWNED, INSIGHTFUL, CLEAR, ENGAGING — list what a careful editor would question, quoting the few words concerned. "
+                "VERIFIED: every name, date, number, quotation, finding, attribution, superlative and causal claim, each labelled unverified, disputed, "
+                "outdated, interpretive or opinion, with the kind of source that would settle it; never label anything verified and never supply a "
+                "citation. OWNED: sentences anyone could have written; what detail of the writer's own would make them theirs. INSIGHTFUL: as a fair "
+                "skeptic — unsupported assumptions, the strongest objection, missing evidence, exceptions; ask 'so what?'. CLEAR: say in plain words "
+                "what the draft says, then where a reader must guess the meaning, the actor or the action asked. ENGAGING: where curiosity rises, "
+                "where it falls, what repeats, where the stakes are unclear. End with the questions only the writer can answer.")
 SYSTEMS: dict[str, str] = {
     "sum.brief": "Summarize the TEXT in a short paragraph (about a fifth of its length, at most 120 words). Only what the text says.",
     "sum.points": "Give the TEXT's key points as 3 to 7 lines, each starting with '• '. Only what the text says.",
@@ -273,8 +281,10 @@ class Assist:
         out = {"genre": g["id"], "genre_name": g["name"], "blueprint": bp, "blueprint_text": plan, "blend": pick["blend"],
                "record_status": g["provenance"]["status"], "stage": stage, "field": field.get("id", ""), "style": style.get("id", "")}
         status = "This kind of document's record is a %s." % g["provenance"]["status"]
+        own = str(body.get("own") or "").strip()[:20000]     # the writer's own material: answers to the interview, notes, evidence
         if stage == "plan":                                  # the user reviews the plan before a word is drafted
-            return dict(out, by="rules", text=plan, can_draft=self.can_ai(use_ai),
+            iv = writing.voice_interview(brief)
+            return dict(out, by="rules", text=plan, can_draft=self.can_ai(use_ai), interview=iv, interview_text="" if bp["fiction"] else writing.interview_text(iv),
                         note=("This is the plan. Read it; change the brief, the kind, the field or the style if it is not what you want; then have it written. "
                               if self.can_ai(use_ai) else "This is the plan to write from. No AI key is saved, so QueryBook cannot draft it: write to the plan, "
                               "then use “Check a draft”. ") + status)
@@ -293,7 +303,14 @@ class Assist:
         system = ("You draft documents to a blueprint. Follow the BLUEPRINT exactly. Use only what the BRIEF and the FACTS give: add no fact, name, "
                   "number, date, quotation or source of your own, and leave [square brackets] where a needed detail is missing."
                   + (" This is fiction: invent the story from the brief's premise, and keep its own facts consistent." if bp["fiction"] else ""))
-        user = "BLUEPRINT:\n%s\n\nBRIEF:\n%s\n\nFACTS:\n%s" % (writing.writer_brief(bp), brief[:6000], "\n".join(fact_lines) or "(none held)")
+        user = "BLUEPRINT:\n%s\n\nBRIEF:\n%s\n\nTHE WRITER'S OWN MATERIAL (use it; keep its details and wording; add nothing to it):\n%s\n\nFACTS:\n%s" % (
+            writing.writer_brief(bp), brief[:6000], own or "(none given)", "\n".join(fact_lines) or "(none held)")
+
+        def voiced(r: dict) -> dict:                         # every draft is read against VOICE (rules, no AI) before the person sees it
+            if bp["fiction"]:
+                return r
+            a = writing.voice_audit(str(r.get("text") or ""), brief + "\n" + own)
+            return dict(r, voice=a, voice_text=writing.voice_text(a))
         try:
             if stage == "revise":                            # the user's own notes on the draft they have read
                 notes, old = str(body.get("notes") or "").strip(), str(body.get("draft") or "").strip()
@@ -305,9 +322,9 @@ class Assist:
                 if not draft:
                     raise RuntimeError("empty result")
                 crit = writing.critique(draft, bp)
-                return dict(out, by=provider, text=draft, critique=crit, critique_text=writing.critique_text(crit), rounds=0, can_draft=True,
+                return voiced(dict(out, by=provider, text=draft, critique=crit, critique_text=writing.critique_text(crit), rounds=0, can_draft=True,
                             note="Revised to your notes. " + ("The critic passes it. " if crit["passed"] else "The critic finds %d thing%s to fix (below). "
-                                                                 % (len(crit["revise"]), "" if len(crit["revise"]) == 1 else "s")) + status)
+                                                                 % (len(crit["revise"]), "" if len(crit["revise"]) == 1 else "s")) + status))
             j, provider = self.model(system, user, TEXT_SCHEMA)
             draft = str(j.get("text") or "").strip()
             if not draft:
@@ -323,12 +340,29 @@ class Assist:
                     c2 = writing.critique(again, bp)
                     if len(c2["revise"]) <= len(crit["revise"]):
                         draft, crit = again, c2
-            return dict(out, by=provider, text=draft, critique=crit, critique_text=writing.critique_text(crit), rounds=rounds, can_draft=True,
+            return voiced(dict(out, by=provider, text=draft, critique=crit, critique_text=writing.critique_text(crit), rounds=rounds, can_draft=True,
                         note=("The critic passed it at all five layers. " if crit["passed"] else "The critic still finds %d thing%s to fix (listed below). "
                               % (len(crit["revise"]), "" if len(crit["revise"]) == 1 else "s")) + status
-                        + (" Checks left for a person: %d." % len(crit["for_a_person"]) if crit["for_a_person"] else ""))
+                        + (" Checks left for a person: %d." % len(crit["for_a_person"]) if crit["for_a_person"] else "")))
         except (RuntimeError, OSError, ValueError) as e:
             return dict(out, by="rules", text=plan, note="The AI could not draft this (%s), so this is the plan to write from. %s" % (e, status))
+
+    def voice_check(self, text: str, own: str, use_ai: bool) -> dict:
+        """a draft read against the user's VOICE guidelines. The rules point and ask; with a key, a model adds a second reading as
+        an editor who does not rewrite — labelled, and never allowed to call a claim verified."""
+        a = writing.voice_audit(text, own)
+        r = {"by": "rules", "voice": a, "text": writing.voice_text(a),
+             "note": "Read against five standards: Verified, Owned, Insightful, Clear, Engaging. QueryBook points and asks; it does not rewrite, and it "
+                     "never marks a claim as verified — only you can, after opening the source."}
+        if self.can_ai(use_ai):
+            try:
+                j, provider = self.model(VOICE_EDITOR, "DRAFT:\n" + text[:40000] + ("\n\nTHE WRITER'S OWN MATERIAL:\n" + own[:8000] if own else ""), TEXT_SCHEMA)
+                more = str(j.get("text") or "").strip()
+                if more:
+                    r["editor_text"], r["editor_by"] = more, LABELS.get(provider, provider)
+            except (RuntimeError, OSError, ValueError):
+                pass
+        return r
 
     def check_draft(self, text: str, genre_id: str, body: dict) -> dict:
         lib = self.genres()
@@ -385,6 +419,8 @@ class Assist:
             r = self.write_document(text, option, use_ai, body)
         elif task == "write.check":
             r = self.check_draft(text, option, body)
+        elif task == "write.voice":
+            r = self.voice_check(text, str(body.get("own") or ""), use_ai)
         elif task == "write.style":
             r = self.learn_style(text, str(body.get("name") or ""))
         elif task == "write.learn":

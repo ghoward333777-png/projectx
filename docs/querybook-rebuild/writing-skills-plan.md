@@ -165,3 +165,33 @@ accused person guilty; an official weather warning is given as issued.
 4. A whole-book planner: a preview held across chapters, and a story bible for fiction.
 5. The benchmark set and blind comparison — the measure of "most skilled".
 6. Fields and book categories from authoritative lists (library classifications; the newspaper's own category page).
+
+## VOICE — the user's guidelines for writing with AI (adopted 2026-11-14, shell 1.9.0)
+
+Source: the user's guide "Writing With AI Without Losing Your Voice". Five pitfalls of AI writing are answered by five
+standards, and the person stays responsible for truth, perspective, meaning and the final decision.
+
+| Pitfall | Standard | In the engine (`apps/shell/writing.py`) |
+|---|---|---|
+| Confident inaccuracy | **V**erified | `claims`: every name-date-number, quotation, "research shows", superlative, causal and absolute claim is listed and labelled unverified / interpretive / opinion. Nothing is ever labelled verified — a citation is not a verification; only the person who opened the source can say so |
+| The broken record | **O**wned | Stock phrases (`STOCK`); how many of the writer's own details (names, numbers) survive in the draft (`own_details`) |
+| Smart but empty | **I**nsightful | Sentences of abstract nouns with no example, reason or case; no reason given anywhere; no objection or limit; the meaning-test questions are asked |
+| Clarity lost in noise | **C**lear | Abstract nouns on weak verbs, sentences over 35 words, official-sounding words (`JARGON`) |
+| Predictable and boring | **E**ngaging | A paragraph that repeats an earlier one, three sentences opening alike, an opening with nothing left open, an ending that does not answer the opening |
+
+Where it acts:
+
+- **Before drafting** (the plan step, never skipped): the ownership interview (ten questions), the thesis to complete
+  ("Most people believe … I believe …") and what the brief leaves unsaid. The person's answers go to the drafter as
+  *the writer's own material*.
+- **While drafting**: `VOICE_RULES` are part of `writer_brief` for every non-fiction document — only supplied facts,
+  experiences, quotations and sources; `[needs evidence: …]` where support is missing; claims matched to their evidence;
+  the writer's details and wording kept; no stock filler; actors named; every paragraph new.
+- **After drafting**: every draft and revision is read by `voice_audit` (rules, no AI) and shown under the critic's reading.
+- **VOICE check** (a task of AI text gen): paste any draft. The rules point and ask; with a key, a model adds an editor's
+  second reading that does not rewrite and may not call anything verified (`assist.VOICE_EDITOR`), labelled as made by AI.
+- **For the person, not a machine**: truth, fairness and privacy, meaning, and the final decision are listed on every audit.
+
+Not built yet: the interview as a one-question-at-a-time conversation that pushes back on vague answers; checking that a
+cited source exists and supports the wording (needs the source opened — the audit only says to do it); cultural-flattening
+detection beyond the writer's lost details; the say-it-aloud and independent-reader tests.

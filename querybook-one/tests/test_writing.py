@@ -185,6 +185,50 @@ class MachineTest(unittest.TestCase):
         self.assertIn("Use only what the BRIEF and the FACTS give", "Use only what the BRIEF and the FACTS give")
         self.assertIn("## <name>", calls[0])                                        # the writer is given the blueprint the critic judges by
 
+    def test_voice_points_at_the_five_pitfalls_and_never_calls_a_claim_verified(self):
+        ai = ("In today's rapidly changing world, the intentional strategic development of capabilities aligned with emerging opportunities is a "
+              "crucial consideration. Research shows that 73% of companies fail. The implementation of transformation requires the optimization "
+              "of alignment and the facilitation of engagement.\n\nIn today's rapidly changing world, the intentional strategic development of "
+              "capabilities aligned with emerging opportunities is a crucial consideration for organizations.\n\nAt the end of the day, the key "
+              "takeaway is that learning is a journey.")
+        a = W.voice_audit(ai, "")
+        part = {p["standard"]: p for p in a["parts"]}
+        self.assertEqual([p["standard"] for p in a["parts"]], list(W.VOICE))
+        self.assertFalse(a["passed"])
+        self.assertTrue(any("73%" in f for f in part["verified"]["found"]))                    # confident inaccuracy: the claim to check
+        self.assertTrue(any("at the end of the day" in f for f in part["owned"]["found"]))     # the broken record
+        self.assertTrue(any("sounds deep" in f for f in part["insightful"]["found"]))          # smart but empty
+        self.assertTrue(part["clear"]["found"])                                                # clarity lost in noise
+        self.assertTrue(any("says again" in f for f in part["engaging"]["found"]))             # predictable
+        for c in W.claims(ai + " The council found a 4% rise (Smith, 2019)."):
+            self.assertIn(c["label"], W.CLAIM_LABELS)
+            self.assertNotEqual(c["label"], "verified")                                        # a citation is not a verification
+        self.assertEqual(len(a["for_the_writer"]), 4)                                          # the final review is the person's
+
+    def test_voice_recognises_a_draft_built_from_the_writers_own_material(self):
+        mine = ("Why did four months of failed interviews teach me more than the offer? In March 2019 I applied to 31 firms in Leeds and heard "
+                "back from two. I had described myself as a generalist, because I thought breadth looked safe. But the two replies both asked "
+                "about one project: the payroll migration at Dawson's.\n\nSo I rewrote the first line of my CV around that migration. However, "
+                "this only works if you have one project worth naming. Within three weeks I had four interviews in Leeds.")
+        a = W.voice_audit(mine, "Leeds, 31 firms, Dawson's payroll migration, March 2019")
+        part = {p["standard"]: p for p in a["parts"]}
+        for k in ("owned", "insightful", "clear", "engaging"):
+            self.assertTrue(part[k]["ok"], (k, part[k]["found"]))
+        self.assertTrue(any("your own account" in f for f in part["verified"]["found"]))       # first-hand: only the writer can vouch
+        lost = W.voice_audit("Applicants should tailor each application to the role.", "Leeds, 31 firms, Dawson's")
+        self.assertFalse({p["standard"]: p for p in lost["parts"]}["owned"]["ok"])             # the writer's details were dropped
+
+    def test_the_plan_asks_for_the_writers_material_and_the_drafter_is_bound_by_voice(self):
+        r = self.a.run({"task": "write.doc", "text": "A memo to the warehouse team: finish the stock count by Friday", "option": "memo", "ai": False})
+        self.assertIn("What did you personally see?", r["interview_text"])
+        self.assertIn("Most people believe", r["interview_text"])
+        brief = W.writer_brief(r["blueprint"])
+        self.assertIn("VOICE: Use only the facts, experiences, quotations and sources supplied", brief)
+        self.assertIn("[needs evidence:", brief)
+        v = self.a.run({"task": "write.voice", "text": "Research shows that everyone benefits. It is important to remember this.", "ai": False})
+        self.assertEqual(v["by"], "rules")
+        self.assertIn("VERIFIED", v["text"])
+
     def test_check_a_draft_needs_no_ai(self):
         r = self.a.run({"task": "write.check", "text": MEMO, "option": "memo"})
         self.assertEqual(r["by"], "rules")

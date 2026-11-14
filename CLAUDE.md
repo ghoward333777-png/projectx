@@ -295,6 +295,10 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 - Fill Dates (`qbbulk.fill_dates`, `/api/bulk/fill-dates`, the button on a fact in the Ask page): reads one subject's record
   from the source its facts cite and adds dates, rank and sources beside the facts. It never adds a fact and never supplies a
   date the source does not state; a fact with none says "no date in the source".
+- VOICE (the user's guidelines, 2026-11-14; `writing.voice_audit`, `VOICE_RULES`, `voice_interview`, task `write.voice`): Verified,
+  Owned, Insightful, Clear, Engaging. The plan step asks for the writer's own material (interview + thesis) BEFORE drafting; the
+  drafter is bound by `VOICE_RULES`; every draft is audited by rules. The audit points and asks — it never rewrites and NEVER
+  labels a claim verified (a citation is not a verification). The final decisions are the person's. Keep all of it.
 - The writer and the critic read the same record. No genre named → ask, never guess. Legal genres stay "a draft for a
   qualified lawyer"; a crime report never calls an accused person guilty. A model's draft is labelled (`by`).
 

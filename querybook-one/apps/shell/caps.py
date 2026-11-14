@@ -32,6 +32,9 @@ CAPABILITIES: list[dict] = [
                 "about": "Any kind of document in the library, in any field and style. You see the plan first, then the draft (checked at five layers), then revise it with your own notes."},
                {"id": "write.check", "name": "Check a draft", "input": "text", "option": "genre",
                 "about": "Paste a draft and choose its kind: QueryBook judges it at five layers and says what to fix. No AI needed."},
+               {"id": "write.voice", "name": "VOICE check", "input": "text",
+                "about": "Paste a draft — yours or an AI's. QueryBook reads it against five standards: Verified (every claim to check), Owned (is it yours?), "
+                         "Insightful (does it say something?), Clear, Engaging. It points and asks; it does not rewrite, and you make the final decisions."},
                {"id": "write.style", "name": "Learn my style", "input": "text", "option": "name",
                 "about": "Paste a page or more of your own writing. QueryBook measures its habits and adds it to the style list — as numbers; none of your sentences is kept."},
                {"id": "write.learn", "name": "Learn from a source", "input": "brief", "option": "source", "placeholder": "https://… the address of one page of the source",

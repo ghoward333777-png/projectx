@@ -52,7 +52,7 @@ function cpDraw() {
 /* AI text gen (the rail, beside Language and Translate): the Write capability opened on the writing machine */
 function textGenView() {
   CP.textgen = true; CP.cap = "write";
-  if (!CP.task.write || !/^write\.(doc|check|grammar|style|learn)$/.test(CP.task.write)) CP.task.write = "write.doc";
+  if (!CP.task.write || !/^write\.(doc|check|voice|grammar|style|learn)$/.test(CP.task.write)) CP.task.write = "write.doc";
   const v = capsView();
   if (CP.cat) cpDraw();
   return v;
@@ -140,7 +140,7 @@ async function cpSpeak(text) {
 async function cpStage(t, stage, draft) {
   const text = (CP.text[t.id] || "").trim();
   if (stage === "revise" && !(CP.notes || "").trim()) { CP.err = "Say what to change first."; return cpDraw(); }
-  await cpDo(t.id, { task: t.id, text, option: CP.genre || "", style: CP.style || "", field: CP.field || "", stage, draft: draft || "", notes: CP.notes || "" });
+  await cpDo(t.id, { task: t.id, text, option: CP.genre || "", style: CP.style || "", field: CP.field || "", stage, draft: draft || "", notes: CP.notes || "", own: CP.own || "" });
   if (stage === "revise") CP.notes = "";
 }
 
@@ -159,6 +159,13 @@ function cpResult(t, r) {
     r.insight ? el("p", {}, el("b", {}, "In plain words: "), r.insight, " ", el("span", { class: "chip" }, r.insight_by)) : null,
     r.rules_text && r.rules_text !== r.text ? el("details", { class: "small" }, el("summary", {}, "The text's own key sentences (QueryBook's rules, no AI)"), el("pre", { class: "capout" }, r.rules_text)) : null,
     // the writing machine works in steps the person reviews: the plan, then the draft, then their notes on it
+    // VOICE: before a word is drafted the writer is asked for what only they know; the draft is then built from it
+    t.id === "write.doc" && r.stage === "plan" && r.interview_text ? el("div", {},
+      el("details", { class: "small", open: true }, el("summary", {}, "Before it is written — your own material (so the draft is yours, not anyone's)"), el("pre", { class: "capout" }, r.interview_text)),
+      el("textarea", { class: "aktext", rows: 4, placeholder: "Your answers, notes, evidence and sources — in any order. The draft uses only this, your brief and QueryBook's facts; nothing is invented.",
+        oninput: e => { CP.own = e.target.value; } }, CP.own || "")) : null,
+    r.voice_text && r.voice_text !== r.text ? el("details", { class: "small", open: !(r.voice || {}).passed }, el("summary", {}, "VOICE check — verified, owned, insightful, clear, engaging (QueryBook's rules, no AI)"), el("pre", { class: "capout" }, r.voice_text)) : null,
+    r.editor_text ? el("details", { class: "small", open: true }, el("summary", {}, "An editor's second reading — it does not rewrite (made by: " + (r.editor_by || "AI") + ")"), el("pre", { class: "capout" }, r.editor_text)) : null,
     t.id === "write.doc" && r.stage === "plan" && r.can_draft ? el("div", { class: "akline" },
       el("button", { type: "button", class: "btn", disabled: CP.busy, onclick: () => cpStage(t, "draft") }, CP.busy ? "Writing…" : "Write it to this plan"),
       el("span", { class: "small muted" }, "The draft is checked at five layers before you see it.")) : null,

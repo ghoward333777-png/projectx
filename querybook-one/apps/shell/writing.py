@@ -369,6 +369,9 @@ def writer_brief(bp: dict) -> str:
         lines.append("Learned rule%s: %s" % (" (%s)" % u["section"] if u.get("section") else "", u["rule"]))
     if bp.get("style"):
         lines.append(style_brief(bp["style"]))
+    if not bp["fiction"]:
+        for v in VOICE_RULES:                                # the user's VOICE guidelines bind whoever drafts
+            lines.append("VOICE: %s." % v)
     return "\n".join(lines)
 
 
@@ -736,3 +739,244 @@ def keep_units(units: list[dict], page: str, genre_ids: list[str]) -> dict:
                          "rule": rule[:300], "reason": " ".join(str(u.get("reason") or "").split())[:300],
                          "failure": " ".join(str(u.get("failure") or "").split())[:200]})
     return {"kept": kept, "dropped": dropped}
+
+
+# ================================================================================================ VOICE
+# The user's guidelines (2026-11-14, "Writing With AI Without Losing Your Voice"): five pitfalls of AI writing answered by
+# five standards — Verified, Owned, Insightful, Clear, Engaging — with the person responsible for truth, perspective,
+# meaning and the final decision. Here: the questions asked BEFORE drafting (the interview and the thesis), the rules a
+# drafter is bound by, and a rule-based audit of a draft. The audit never calls a claim verified: only a person who has
+# opened the source can. It finds what to look at and asks the questions; it rewrites nothing.
+VOICE = ("verified", "owned", "insightful", "clear", "engaging")
+VOICE_QUESTION = {
+    "verified": "Is this real, accurate, current, properly attributed and supported by evidence?",
+    "owned": "Could this have come from anyone, or does it carry this writer's own experience, judgment and evidence?",
+    "insightful": "What does this help the reader see, understand or reconsider?",
+    "clear": "Will the intended reader understand the meaning without having to guess?",
+    "engaging": "Does each section create a reason to continue?"}
+VOICE_PITFALL = {"verified": "confident inaccuracy", "owned": "the broken record (familiar patterns)", "insightful": "smart but empty",
+                 "clear": "clarity lost in noise", "engaging": "predictable and boring"}
+CLAIM_LABELS = ("verified", "unverified", "disputed", "outdated", "interpretive", "opinion")
+INTERVIEW = (
+    "What did you personally see?", "What did you do?", "What happened as a result?", "What did you believe at first?",
+    "What changed your mind?", "What did you misunderstand?", "What do others usually miss?",
+    "Which details do you still remember — a place, a number, a sentence someone said?", "What would you do differently now?",
+    "Why does this matter to you?")
+THESIS = ("Most people believe …", "I believe …", "My evidence is …", "The difference matters because …", "The strongest objection is …",
+          "My claim is limited by …")
+ASSIGNMENT = ("purpose", "intended reader", "desired outcome", "format and length", "evidence standard", "tone", "where it will be published",
+              "what goes wrong if it is mistaken", "what you must contribute yourself")
+VOICE_RULES = (
+    "Use only the facts, experiences, quotations and sources supplied. Invent no personal experience, quotation, source, statistic, "
+    "interview, credential or event",
+    "Where a claim needs evidence that was not supplied, write the claim narrowly and mark the place [needs evidence: what is missing]",
+    "Match each claim to its evidence: 'found' or 'suggests', not 'proves'; 'is associated with', not 'causes', unless causation is shown; "
+    "no 'always', 'everyone' or 'the first' without support",
+    "Keep the writer's own details, names, examples and wording; do not swap them for more familiar ones",
+    "No stock openings, closings or filler: say the thing itself. Every claim that sounds deep must be stated in ordinary words, with an "
+    "example or the reason it holds",
+    "Name who does what. Prefer the verb to the abstract noun. Keep the technical terms the subject needs, and define them",
+    "Every paragraph adds something new; none restates an earlier one. The ending delivers what the opening promised")
+STOCK = ("in today's", "rapidly changing world", "ever-changing", "ever-evolving", "fast-paced world", "it is important to remember", "it is important to note",
+         "it's important to note", "it is worth noting", "at the end of the day", "the key takeaway", "key takeaways", "in conclusion,", "when it comes to",
+         "plays a crucial role", "plays a vital role", "a testament to", "delve into", "navigate the", "unlock the", "unlocking", "the landscape of",
+         "landscape", "journey", "game changer", "game-changer", "tapestry", "in the realm of", "it goes without saying", "needless to say",
+         "more than ever", "now more than ever", "not just", "not only", "let's dive in", "embark on", "harness the power", "the power of",
+         "paradigm shift", "moving forward", "going forward", "look no further", "stands as a", "serves as a reminder")
+JARGON = ("leverage", "utilize", "utilise", "synergy", "synergies", "stakeholder", "stakeholders", "paradigm", "holistic", "robust", "facilitate",
+          "optimize", "optimise", "ecosystem", "scalable", "actionable", "impactful", "seamless", "seamlessly", "empower", "streamline", "operationalize",
+          "strategic", "alignment", "aligned", "deliverables", "learnings", "bandwidth", "ideate", "incentivize", "in order to", "with regard to",
+          "in terms of", "due to the fact that", "at this point in time", "a wide range of")
+ABSTRACT_END = ("tion", "sion", "ment", "ness", "ity", "ance", "ence", "ship", "ism")
+WEAK_VERB = re.compile(r"\b(is|are|was|were|has|have|had|provides?|enables?|involves?|represents?|constitutes?)\b", re.I)
+GROUNDED = re.compile(r"\b(because|for example|for instance|such as|so that|which means|when|if|unless|therefore|after|before)\b|\d", re.I)
+RESEARCH = re.compile(r"\b(research|stud(?:y|ies)|surveys?|data|experts?|scientists?|analysts?|reports?|evidence|statistics)\s+(?:shows?|suggests?|agrees?|"
+                      r"finds?|found|says?|confirms?|proves?|indicates?|demonstrates?|reveals?)\b|\bit is (?:well )?known that\b|\bstudies have shown\b", re.I)
+SUPERLATIVE = re.compile(r"\bthe (?:first|last|only)\b(?! (?:line|step|time|part|thing|place|page|paragraph|sentence|section|day|week|month|year|one|two|few)\b)|"
+                         r"\bthe (?:largest|smallest|biggest|oldest|newest|best|worst|fastest|highest|lowest|leading|most \w+|least \w+)\b", re.I)
+CAUSAL = re.compile(r"\b(causes?|caused|proves?|proved|proven|leads? to|led to|results? in|resulted in|guarantees?|ensures?|is responsible for)\b", re.I)
+ABSOLUTE = re.compile(r"\b(always|never|everyone|everybody|no one|nobody|all (?:people|experts|studies)|every (?:one|time)|undeniabl[ey]|without (?:a )?doubt|"
+                      r"certainly|definitely)\b", re.I)
+QUOTED = re.compile(r"[“\"][^”\"]{12,}[”\"]")
+NUMBER = re.compile(r"(?<![\w.])(?:\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)(?:\s?%|\s?percent|\s?(?:million|billion|thousand))?")
+YEAR4 = re.compile(r"\b(1[0-9]{3}|20[0-9]{2})\b")
+OPINION = re.compile(r"\b(i (?:think|believe|feel|suspect|doubt)|in my (?:view|opinion|experience)|should|ought to|must)\b", re.I)
+COUNTER = re.compile(r"\b(however|but|yet|although|though|critics|objection|on the other hand|unless|except|not always|limit(?:s|ed|ation)?)\b", re.I)
+CONTRAST = re.compile(r"\b(but|yet|however|although|instead|until|except)\b", re.I)
+
+
+def abstract_count(sentence: str) -> int:
+    """how many abstract nouns (by ending) a sentence carries — the cloud a simple idea gets lost in"""
+    return sum(1 for w in WORD.findall(sentence.lower()) if len(w) > 6 and w.endswith(ABSTRACT_END))
+
+
+def claims(text: str) -> list[dict]:
+    """every sentence that makes a checkable claim: {"sentence", "kinds", "label", "todo"}. The label is one of CLAIM_LABELS and
+    is never "verified": a claim with a citation is still unverified until a person has opened the source."""
+    out: list[dict] = []
+    for s in sentences(text):
+        kinds: list[str] = []
+        if QUOTED.search(s):
+            kinds.append("quotation")
+        if NUMBER.search(YEAR4.sub("", s)):
+            kinds.append("number")
+        if YEAR4.search(s):
+            kinds.append("date")
+        if RESEARCH.search(s):
+            kinds.append("research or experts")
+        if SUPERLATIVE.search(s):
+            kinds.append("superlative")
+        if CAUSAL.search(s):
+            kinds.append("cause")
+        if ABSOLUTE.search(s):
+            kinds.append("absolute")
+        if not kinds:
+            continue
+        cited = bool(CITATION.search(s) or ATTRIBUTION.search(s))
+        if OPINION.search(s) and kinds in (["cause"], ["absolute"], ["superlative"]):
+            label, todo = "opinion", "a judgment: say it is yours, or support it"
+        elif FIRST_PERSON.search(s) and not cited and all(k in ("number", "date") for k in kinds):
+            label, todo = "unverified", "your own account: only you can vouch for it — check it against your own records"
+        elif kinds == ["cause"] or kinds == ["absolute"]:
+            label, todo = "interpretive", "a conclusion, not a record: say what it rests on, or narrow it"
+        else:
+            label = "unverified"
+            todo = ("a source is named: open it and check it exists, says this, and supports this wording" if cited
+                    else "no source is given: find the strongest one (the original record first), or cut or narrow the claim")
+        out.append({"sentence": s, "kinds": kinds, "label": label, "cited": cited, "todo": todo})
+    return out
+
+
+def own_details(own: str) -> list[str]:
+    """the particular things in the writer's own material: names, numbers and their rarer words"""
+    seen: list[str] = []
+    for m in re.finditer(r"(?<![.!?]\s)(?<!^)\b[A-Z][a-z]+(?:\s[A-Z][a-z]+)*\b|\d+(?:[.,]\d+)*", own):
+        w = m.group(0)
+        if w.lower() not in STOP and w not in seen:
+            seen.append(w)
+    return seen[:60]
+
+
+def voice_audit(text: str, own: str) -> dict:
+    """a draft read against the five standards. `own` is the writer's own material (brief, notes, answers to the interview) or "".
+    Returns {"parts": [{"standard", "question", "pitfall", "ok", "found": [...], "ask": [...]}], "for_the_writer": [...], "claims"}.
+    Rule-based: it points and asks. It never says a claim is true and never rewrites."""
+    sents, paras = sentences(text), paragraphs(text)
+    low = text.lower().replace("’", "'")
+    parts: list[dict] = []
+    # ---- Verified
+    cl = claims(text)
+    unver = [c for c in cl if c["label"] == "unverified"]
+    found = ["%s — %s: “%s”" % (", ".join(c["kinds"]), c["todo"], c["sentence"][:160]) for c in cl[:14]]
+    if len(cl) > 14:
+        found.append("… and %d more claims to check" % (len(cl) - 14))
+    parts.append({"standard": "verified", "ok": not cl, "found": found,
+                  "ask": ["Have you opened each source yourself?", "Does each source support the whole claim, in these words?",
+                          "Is anything out of date, or disputed by another credible source?"] if cl else []})
+    # ---- Owned
+    stock = [p for p in STOCK if p in low]
+    found = ["stock phrase: “%s”" % p for p in stock[:10]]
+    details = own_details(own)
+    kept = [d for d in details if d.lower() in low]
+    if details:
+        found.append("%d of your %d own details (names, numbers) appear in the draft%s" % (
+            len(kept), len(details), "" if kept else " — it could have been written without you"))
+        lost = [d for d in details if d.lower() not in low][:8]
+        if lost and len(kept) < len(details):
+            found.append("of yours, not in the draft: " + ", ".join(lost))
+    elif not FIRST_PERSON.search(text) and not any(re.search(r"\b[A-Z][a-z]+\b", s[1:]) or re.search(r"\d", s) for s in sents):
+        found.append("no name, number or first-hand detail anywhere: nothing here could only have come from this writer")
+    owned_ok = not stock and (not details or len(kept) * 2 >= len(details)) and not (found and not details)
+    parts.append({"standard": "owned", "ok": owned_ok, "found": found,
+                  "ask": [] if owned_ok else ["Which detail, example or wording of your own belongs here?", "Does it sound like you when read aloud?",
+                                              "Did a familiar example replace one of yours?"]})
+    # ---- Insightful
+    empty = [s for s in sents if len(WORD.findall(s)) >= 8 and abstract_count(s) >= 3 and not GROUNDED.search(s)
+             and not re.search(r"\b[A-Z][a-z]+\b", s[1:])]
+    found = ["sounds deep, says what? “%s”" % s[:170] for s in empty[:8]]
+    has_claim = any(re.search(r"\b(because|therefore|so|which is why|this means)\b", s, re.I) for s in sents)
+    if len(sents) >= 6 and not has_claim:
+        found.append("no sentence gives a reason (because, therefore, this means): a subject is described, but no claim is argued")
+    if len(sents) >= 10 and not COUNTER.search(text):
+        found.append("no objection, exception or limit is mentioned")
+    parts.append({"standard": "insightful", "ok": not found, "found": found,
+                  "ask": ["What does it mean in ordinary words?", "What particular case shows it?", "What causes it?", "When would it not be true?",
+                          "What should the reader do differently — so what?"] if found else []})
+    # ---- Clear
+    found = []
+    for s in sents:
+        n = len(WORD.findall(s))
+        if n > 35:
+            found.append("%d words in one sentence: “%s…”" % (n, s[:110]))
+        elif abstract_count(s) >= 3 and WEAK_VERB.search(s):
+            found.append("abstract nouns on a weak verb — who does what? “%s”" % s[:150])
+    jar = [j for j in JARGON if re.search(r"\b%s\b" % re.escape(j), low)]
+    if jar:
+        found.append("words that sound official: " + ", ".join(jar[:12]) + " — keep only the terms the subject needs, and define those")
+    parts.append({"standard": "clear", "ok": not found, "found": found[:12],
+                  "ask": ["What is the shortest accurate version?", "Who acts, and what do they do?", "What is the reader asked to do?"] if found else []})
+    # ---- Engaging
+    found = []
+    cps = [set(content(p)) for p in paras]
+    for i in range(1, len(cps)):
+        for j in range(i):
+            if len(cps[i]) >= 6 and len(cps[i] & cps[j]) * 10 >= len(cps[i]) * 7:
+                found.append("paragraph %d says again what paragraph %d said" % (i + 1, j + 1))
+                break
+    firsts = [WORD.findall(s.lower())[:1] for s in sents]
+    for i in range(len(firsts) - 2):
+        if firsts[i] and firsts[i] == firsts[i + 1] == firsts[i + 2]:
+            found.append("three sentences in a row open with “%s”" % firsts[i][0])
+            break
+    if paras and len(sents) >= 5:
+        first = paras[0]
+        if not ("?" in first or re.search(r"\d", first) or CONTRAST.search(first) or re.search(r"\b[A-Z][a-z]+\b", first[1:])):
+            found.append("the opening has no question, no particular person or number and no tension: nothing is left open for the reader")
+        if len(paras) >= 3 and len(cps[0]) >= 4 and not (cps[0] & cps[-1]):
+            found.append("the ending shares nothing with the opening: was the opening's promise kept?")
+    parts.append({"standard": "engaging", "ok": not found, "found": found[:10],
+                  "ask": ["Does the reader need the next line?", "What is at stake, and for whom?", "Can this paragraph go without loss?"] if found else []})
+    for p in parts:
+        p["question"], p["pitfall"] = VOICE_QUESTION[p["standard"]], VOICE_PITFALL[p["standard"]]
+    writer = ["Truth: am I prepared to stand behind every claim? Did I open the sources myself?",
+              "Fairness and privacy: are people and sources represented fairly, and is anything private protected?",
+              "Meaning: is this what I think, or only what sounds right?",
+              "Decision: the final editorial choices are mine."]
+    return {"parts": parts, "claims": cl, "unverified": len(unver), "passed": all(p["ok"] for p in parts), "for_the_writer": writer}
+
+
+def voice_text(a: dict) -> str:
+    lines = ["VOICE — %s" % ("nothing found by the rules; the four questions at the end are still yours."
+                             if a["passed"] else "things to look at, by standard. Nothing is rewritten; a rule can point, only you can decide.")]
+    for p in a["parts"]:
+        lines.append("")
+        lines.append("%s — %s" % (p["standard"].upper(), p["question"]))
+        if not p["found"]:
+            lines.append("  ✔ nothing found by the rules")
+        for f in p["found"]:
+            lines.append("  • " + f)
+        for q in p["ask"]:
+            lines.append("  ? " + q)
+    lines.append("")
+    lines.append("FOR YOU, NOT A MACHINE")
+    lines += ["  □ " + w for w in a["for_the_writer"]]
+    return "\n".join(lines)
+
+
+def voice_interview(brief: str) -> dict:
+    """what the writer is asked before a word is drafted: what the assignment leaves unsaid, the interview, the thesis to complete"""
+    low = brief.lower()
+    said = {"intended reader": ("for ", "audience", "reader"), "format and length": ("word", "page", "short", "long", "brief"),
+            "tone": ("tone", "formal", "informal", "warm", "plain", "friendly"), "purpose": (" to ", "so that", "why", "explain", "persuade", "ask")}
+    missing = [k for k in ASSIGNMENT if k in said and not any(w in low for w in said[k])]
+    return {"missing": missing, "interview": list(INTERVIEW), "thesis": list(THESIS)}
+
+
+def interview_text(iv: dict) -> str:
+    lines = ["BEFORE IT IS WRITTEN — your own material", "The draft can only be yours if it starts from what you know. Answer what applies, in a few words each:"]
+    lines += ["  %d. %s" % (i + 1, q) for i, q in enumerate(iv["interview"])]
+    lines.append("Your claim (complete what you can):")
+    lines += ["  " + t for t in iv["thesis"]]
+    if iv["missing"]:
+        lines.append("The brief does not say: " + ", ".join(iv["missing"]) + ".")
+    return "\n".join(lines)
