@@ -56,7 +56,7 @@ SYSTEMS: dict[str, str] = {
     "write.letter": "Write a letter from the BRIEF. Leave [square brackets] for any name, date or detail the brief does not give.",
     "write.report": "Write a short report from the BRIEF with these headings: Summary, Background, What was done, What was found, Next steps. Use only what the brief gives; leave [square brackets] where a detail is missing.",
     "write.essay": "Write a short essay (about 350 words) on the BRIEF: a clear claim, two or three reasons, the strongest objection, a conclusion. Do not cite sources or quote figures you were not given.",
-    "write.story": "Write a short story (about 400 words) from the BRIEF, with a beginning, a turn and an ending.",
+    "write.story": "Write a short story (about 400 words) from the BRIEF, with a beginning, a turn and an ending. " + " ".join(v + "." for v in writing.FICTION_RULES),
     "write.post": "Write a short announcement from the BRIEF: a headline, then what, when, where, who it is for and what to do next. Leave [square brackets] where a detail is missing.",
     "write.rewrite": "Rewrite the TEXT so it is clearer and easier to read: shorter sentences, plain words, the same meaning, nothing added, nothing left out.",
     "insight": "You are given a TEXT or numbers and the STATISTICS computed from it. In at most 4 short sentences, say in plain words what stands out. Use only the statistics and the text; quote no number that is not there.",
@@ -308,7 +308,8 @@ class Assist:
 
         def voiced(r: dict) -> dict:                         # every draft is read against VOICE (rules, no AI) before the person sees it
             if bp["fiction"]:
-                return r
+                fa = writing.fiction_audit(str(r.get("text") or ""))
+                return dict(r, story=fa, story_text=writing.fiction_text(fa))
             a = writing.voice_audit(str(r.get("text") or ""), brief + "\n" + own)
             return dict(r, voice=a, voice_text=writing.voice_text(a))
         try:
@@ -419,6 +420,11 @@ class Assist:
             r = self.write_document(text, option, use_ai, body)
         elif task == "write.check":
             r = self.check_draft(text, option, body)
+        elif task == "write.story_check":
+            fa = writing.fiction_audit(text)
+            r = {"by": "rules", "story": fa, "text": writing.fiction_text(fa),
+                 "note": "Read for six common habits of stories: stiff dialogue, drifting point of view, vague stakes, one-speed pacing, starting too "
+                         "early, overwriting. QueryBook counts and points; it does not rewrite. The choices are yours, in the edit."}
         elif task == "write.voice":
             r = self.voice_check(text, str(body.get("own") or ""), use_ai)
         elif task == "write.style":

@@ -195,3 +195,21 @@ Where it acts:
 Not built yet: the interview as a one-question-at-a-time conversation that pushes back on vague answers; checking that a
 cited source exists and supports the wording (needs the source opened — the audit only says to do it); cultural-flattening
 detection beyond the writer's lost details; the say-it-aloud and independent-reader tests.
+
+## Story check — the user's tips for fiction (2026-11-14, shell 1.9.1)
+
+From the user's notes on a talk about habits common in manuscripts (the rules are in QueryBook's words; the talk itself was
+not read and is not marked as a learned source). VOICE is for non-fiction; a story is read for these six instead
+(`writing.fiction_audit`, `FICTION_RULES`, task `write.story_check`; the story drafter is bound by the same rules).
+
+| Habit | The fix | What the rules can see |
+|---|---|---|
+| Dialogue too formal, like a therapy session | Make it messy and real | Spoken lines without contractions; feelings explained in tidy sentences; no one interrupts or trails off; speeches over 30 words |
+| Point of view drift | One scene, one head | Two named characters' thoughts in one scene |
+| Stakes that never land | Name the personal, human cost | "lose everything", "the fate of the world" and the like |
+| The pacing plateau | Match sentence length to the scene's heat | Sentences all of one length |
+| First page starts too early | Open where the trouble begins | A waking-up routine in the first 150 words |
+| The overwritten everything | Trust nouns and verbs; use white space | "-ly" words, stacked adjectives, paragraphs over 170 words |
+
+The notes arrived with their first lines cut off: the name of the dialogue habit is inferred from its fix, and any tips
+before it are not in the engine.

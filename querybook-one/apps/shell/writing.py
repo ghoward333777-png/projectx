@@ -369,6 +369,9 @@ def writer_brief(bp: dict) -> str:
         lines.append("Learned rule%s: %s" % (" (%s)" % u["section"] if u.get("section") else "", u["rule"]))
     if bp.get("style"):
         lines.append(style_brief(bp["style"]))
+    if bp["fiction"]:
+        for v in FICTION_RULES:                              # the user's tips for stories bind whoever drafts
+            lines.append("STORY: %s." % v)
     if not bp["fiction"]:
         for v in VOICE_RULES:                                # the user's VOICE guidelines bind whoever drafts
             lines.append("VOICE: %s." % v)
@@ -979,4 +982,120 @@ def interview_text(iv: dict) -> str:
     lines += ["  " + t for t in iv["thesis"]]
     if iv["missing"]:
         lines.append("The brief does not say: " + ", ".join(iv["missing"]) + ".")
+    return "\n".join(lines)
+
+
+# ================================================================================================ fiction habits
+# The user's tips for stories (2026-11-14, from their notes on a talk about common habits in manuscripts; in QueryBook's words).
+# VOICE is for non-fiction; a story is read for these instead. Rules point and ask; the decisions are made in the edit, by the writer.
+FICTION_RULES = (
+    "Dialogue: people talk messily — contractions, fragments, interruptions, things left unsaid. No one explains their feelings in full, tidy sentences",
+    "Point of view: one scene, one head. Stay inside one character's thoughts until the scene breaks",
+    "Stakes: say exactly what this person stands to lose — a person, a place, a promise — never 'everything'",
+    "Pacing: match sentence length to the heat of the moment — short when it is tense, longer when it settles",
+    "Opening: start where the trouble starts, not with waking up or a routine",
+    "Description: trust nouns and verbs; one chosen detail, not a stack of adjectives; break paragraphs and leave white space")
+FICTION_HABITS = ("dialogue", "point of view", "stakes", "pacing", "opening", "overwriting")
+SPOKEN = re.compile(r"[“\"]([^”\"]{2,})[”\"]")
+UNCONTRACTED = re.compile(r"\b(do not|does not|did not|cannot|can not|will not|would not|could not|should not|is not|are not|was not|were not|have not|has not|"
+                          r"i am|i will|i have|i would|you are|you will|you have|we are|we will|they are|it is|that is|there is|let us)\b", re.I)
+THERAPY = re.compile(r"\b(i feel (?:that|like|as)|it makes me feel|i hear (?:you|what)|i understand (?:that|how|why) you|i need you to (?:understand|know)|"
+                     r"i want you to know|what i(?:'m| am) trying to say|i appreciate (?:that|you|your)|thank you for sharing|i(?:'m| am) sorry (?:that )?you feel|"
+                     r"my feelings|your feelings|communicat\w+|boundar(?:y|ies)|process(?:ing)? (?:this|my|your))\b", re.I)
+MESSY = re.compile(r"—|–|\.\.\.|…|-\s*$|\b(uh|um|er|hm+|well|look|listen|wait|no|yeah|nah|okay|ok)\b", re.I)
+THOUGHT = re.compile(r"\b([A-Z][a-z]+) (?:thought|wondered|felt|knew|realized|realised|remembered|hoped|feared|wished|decided|suspected|supposed|doubted|"
+                     r"believed|imagined|worried|sensed)\b")
+NOT_NAMES = frozenset("He She They It We You I The But And Then When Nobody Everyone Someone No Each".split())
+VAGUE_STAKES = re.compile(r"\b(everything (?:would|will|could|might) be lost|los[et] everything|all (?:would|will) be lost|everything (?:was|is) at stake|"
+                          r"the fate of the (?:world|universe|kingdom)|nothing would ever be the same|the end of everything|everything (?:would|will) change|"
+                          r"(?:it|all) would be over|too much (?:was|is) at stake|the stakes (?:were|are|had never been) (?:high|higher))\b", re.I)
+ROUTINE = ("woke", "awoke", "alarm", "yawned", "stretched", "shower", "brushed", "toothbrush", "breakfast", "coffee", "dressed", "mirror", "snooze",
+           "sunlight", "curtains", "pillow", "blinked", "rubbed")
+SCENE_BREAK = re.compile(r"^\s*(?:\*\s*\*\s*\*|#{1,3}\s.*|—{3,}|-{3,}|\*{3,})\s*$", re.M)
+ADJ_END = ("ous", "ful", "less", "ive", "ish", "ent", "ant", "ic", "al", "ary", "en")
+ADJ_STACK = re.compile(r"\b(\w{4,}), (\w{4,})(?:,? and \w{4,}|, \w{4,})? (\w+)\b")
+
+
+def scenes(text: str) -> list[str]:
+    return [s.strip() for s in SCENE_BREAK.split(text) if s.strip()]
+
+
+def fiction_audit(text: str) -> dict:
+    """a story read for six common habits: {"parts": [{"habit", "rule", "ok", "found": [...], "ask": [...]}], "passed"}.
+    Rule-based: it can count and point, not judge a scene. Nothing is rewritten."""
+    sents, paras, words = sentences(text), paragraphs(text), WORD.findall(text)
+    parts: list[dict] = []
+    # ---- dialogue too formal
+    lines = [m.group(1) for m in SPOKEN.finditer(text) if len(WORD.findall(m.group(1))) >= 2]
+    found: list[str] = []
+    if len(lines) >= 3:
+        stiff = [l for l in lines if UNCONTRACTED.search(l)]
+        if len(stiff) * 2 >= len(lines):
+            found.append("%d of %d spoken lines avoid contractions (“%s”) — people say “don't”, “I'm”" % (len(stiff), len(lines), stiff[0][:70]))
+        therapy = [l for l in lines if THERAPY.search(l)]
+        for l in therapy[:3]:
+            found.append("explains feelings like a counselling session: “%s”" % l[:110])
+        if not any(MESSY.search(l) for l in lines):
+            found.append("no one interrupts, trails off or hesitates in %d spoken lines" % len(lines))
+        long_ = [l for l in lines if len(WORD.findall(l)) > 30]
+        if len(long_) * 3 >= len(lines):
+            found.append("%d spoken lines run past 30 words: speeches, not talk" % len(long_))
+    parts.append({"habit": "dialogue", "found": found, "ask": ["What would they really say — and what would they not say?", "Who cuts in?"] if found else []})
+    # ---- point of view drift
+    found = []
+    for n, sc in enumerate(scenes(text)):
+        heads: list[str] = []
+        for m in THOUGHT.finditer(sc):
+            if m.group(1) not in NOT_NAMES and m.group(1) not in heads:
+                heads.append(m.group(1))
+        if len(heads) >= 2:
+            found.append("scene %d is inside %s — one scene, one head" % (n + 1, " and ".join(heads[:4])))
+    parts.append({"habit": "point of view", "found": found, "ask": ["Whose scene is this?", "How would that one person see what the other is feeling?"] if found else []})
+    # ---- stakes that never land
+    found = ["vague stakes: “%s”" % m.group(0) for m in list(VAGUE_STAKES.finditer(text))[:5]]
+    parts.append({"habit": "stakes", "found": found, "ask": ["What exactly does this person lose — who, what, by when?", "What does it cost them, personally?"] if found else []})
+    # ---- pacing plateau
+    found = []
+    lens = [len(WORD.findall(s)) for s in sents]
+    if len(lens) >= 12:
+        mean = sum(lens) / len(lens)
+        spread = (sum((x - mean) ** 2 for x in lens) / len(lens)) ** 0.5
+        if spread < 0.3 * mean or (max(lens) - min(lens)) <= 8:
+            found.append("the sentences are all about %d words (shortest %d, longest %d): one speed from start to end" % (round(mean), min(lens), max(lens)))
+    parts.append({"habit": "pacing", "found": found, "ask": ["Where is the scene hottest? Are the sentences shortest there?"] if found else []})
+    # ---- starts too early
+    found = []
+    head = " ".join(words[:150]).lower()
+    hits = [w for w in ROUTINE if re.search(r"\b%s\b" % w, head)]
+    if len(hits) >= 2 and not SPOKEN.search(text[:160]):
+        found.append("the first page is a routine (%s): the story has not started yet" % ", ".join(hits[:5]))
+    parts.append({"habit": "opening", "found": found, "ask": ["Where does the trouble begin? Can the story open on that line?"] if found else []})
+    # ---- overwritten
+    found = []
+    ly = [w for w in words if len(w) > 4 and w.lower().endswith("ly") and w.lower() not in ("only", "early", "family", "really", "reply", "supply", "apply", "belly", "holly")]
+    if len(words) >= 80 and len(ly) * 100 > len(words) * 4:
+        found.append("%d “-ly” words in %d (%s …): let the verb carry it" % (len(ly), len(words), ", ".join(ly[:5])))
+    stacks = [m.group(0) for m in ADJ_STACK.finditer(text) if m.group(1).lower().endswith(ADJ_END) or m.group(2).lower().endswith(ADJ_END)]
+    for s_ in stacks[:3]:
+        found.append("stacked description: “%s” — choose the one detail that matters" % s_)
+    big = [p for p in paras if len(WORD.findall(p)) > 170]
+    if big:
+        found.append("%d paragraph%s over 170 words with no break: give the page some white space" % (len(big), "" if len(big) == 1 else "s"))
+    parts.append({"habit": "overwriting", "found": found, "ask": ["Which noun and verb do the work here?", "What can go without the reader missing it?"] if found else []})
+    for p, rule in zip(parts, FICTION_RULES):
+        p["rule"], p["ok"] = rule, not p["found"]
+    return {"parts": parts, "passed": all(p["ok"] for p in parts)}
+
+
+def fiction_text(a: dict) -> str:
+    lines = ["STORY CHECK — six common habits. " + ("None found by the rules." if a["passed"] else "These are habits of good writers too; the fix is made in the edit, by you.")]
+    for p in a["parts"]:
+        lines.append("")
+        lines.append("%s — %s." % (p["habit"].upper(), p["rule"]))
+        if not p["found"]:
+            lines.append("  ✔ nothing found by the rules")
+        for f in p["found"]:
+            lines.append("  • " + f)
+        for q in p["ask"]:
+            lines.append("  ? " + q)
     return "\n".join(lines)

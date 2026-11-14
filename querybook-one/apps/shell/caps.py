@@ -35,6 +35,9 @@ CAPABILITIES: list[dict] = [
                {"id": "write.voice", "name": "VOICE check", "input": "text",
                 "about": "Paste a draft — yours or an AI's. QueryBook reads it against five standards: Verified (every claim to check), Owned (is it yours?), "
                          "Insightful (does it say something?), Clear, Engaging. It points and asks; it does not rewrite, and you make the final decisions."},
+               {"id": "write.story_check", "name": "Story check", "input": "text",
+                "about": "Paste a scene or a chapter. QueryBook reads it for six common habits: dialogue that is too formal, point of view that drifts, "
+                         "stakes that stay vague, pacing at one speed, a first page that starts too early, and overwriting. It points; you edit."},
                {"id": "write.style", "name": "Learn my style", "input": "text", "option": "name",
                 "about": "Paste a page or more of your own writing. QueryBook measures its habits and adds it to the style list — as numbers; none of your sentences is kept."},
                {"id": "write.learn", "name": "Learn from a source", "input": "brief", "option": "source", "placeholder": "https://… the address of one page of the source",

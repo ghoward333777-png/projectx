@@ -299,6 +299,8 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   Owned, Insightful, Clear, Engaging. The plan step asks for the writer's own material (interview + thesis) BEFORE drafting; the
   drafter is bound by `VOICE_RULES`; every draft is audited by rules. The audit points and asks — it never rewrites and NEVER
   labels a claim verified (a citation is not a verification). The final decisions are the person's. Keep all of it.
+- Stories are read for six habits instead of VOICE (`writing.fiction_audit`, `FICTION_RULES`, task `write.story_check`): formal
+  dialogue, point-of-view drift ("one scene, one head"), vague stakes, one-speed pacing, starting too early, overwriting.
 - The writer and the critic read the same record. No genre named → ask, never guess. Legal genres stay "a draft for a
   qualified lawyer"; a crime report never calls an accused person guilty. A model's draft is labelled (`by`).
 

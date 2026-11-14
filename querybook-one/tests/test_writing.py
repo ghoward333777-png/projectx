@@ -229,6 +229,31 @@ class MachineTest(unittest.TestCase):
         self.assertEqual(v["by"], "rules")
         self.assertIn("VERIFIED", v["text"])
 
+    def test_a_story_is_read_for_the_six_habits(self):
+        bad = ("Mara woke to the alarm and yawned. She stretched, brushed her teeth and made coffee in the quiet kitchen. The sunlight came through "
+               "the curtains slowly and warmly.\n\n“I do not understand why you are angry with me,” Mara said. “I feel that you are not listening "
+               "to my feelings.”\n\n“I am sorry that you feel that way,” Tom said. “I want you to know that I appreciate you.”\n\n"
+               "“It is not enough. We are going to lose everything,” she said.\n\nMara thought he looked tired. Tom wondered if she had already "
+               "decided to leave. The old, enormous, silent house waited around them.")
+        a = W.fiction_audit(bad)
+        part = {p["habit"]: p for p in a["parts"]}
+        self.assertEqual([p["habit"] for p in a["parts"]], list(W.FICTION_HABITS))
+        self.assertTrue(any("contractions" in f for f in part["dialogue"]["found"]))
+        self.assertTrue(any("counselling" in f for f in part["dialogue"]["found"]))
+        self.assertTrue(any("Mara and Tom" in f for f in part["point of view"]["found"]))      # one scene, one head
+        self.assertTrue(any("lose everything" in f for f in part["stakes"]["found"]))
+        self.assertTrue(part["opening"]["found"])                                              # starts with the morning routine
+        self.assertTrue(any("stacked" in f for f in part["overwriting"]["found"]))
+        good = ("“You sold it.”\n\n“Mara—”\n\n“Dad's boat. You sold Dad's boat.” She didn't sit. Tom kept his eyes on the receipt, the one "
+                "thing on the table between them, and she knew before he opened his mouth that the money was already gone.\n\n“Friday,” he said. "
+                "“They take the house Friday.”")
+        self.assertTrue(W.fiction_audit(good)["passed"], W.fiction_text(W.fiction_audit(good)))
+        story = W.writer_brief(W.blueprint(LIB["genres"]["short-story"], "A lighthouse keeper finds a bottle"))
+        self.assertIn("STORY: Point of view: one scene, one head", story)
+        self.assertNotIn("VOICE:", story)
+        r = self.a.run({"task": "write.story_check", "text": bad, "ai": False})
+        self.assertIn("STORY CHECK", r["text"])
+
     def test_check_a_draft_needs_no_ai(self):
         r = self.a.run({"task": "write.check", "text": MEMO, "option": "memo"})
         self.assertEqual(r["by"], "rules")

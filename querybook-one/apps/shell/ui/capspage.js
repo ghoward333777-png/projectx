@@ -52,7 +52,7 @@ function cpDraw() {
 /* AI text gen (the rail, beside Language and Translate): the Write capability opened on the writing machine */
 function textGenView() {
   CP.textgen = true; CP.cap = "write";
-  if (!CP.task.write || !/^write\.(doc|check|voice|grammar|style|learn)$/.test(CP.task.write)) CP.task.write = "write.doc";
+  if (!CP.task.write || !/^write\.(doc|check|voice|story_check|grammar|style|learn)$/.test(CP.task.write)) CP.task.write = "write.doc";
   const v = capsView();
   if (CP.cat) cpDraw();
   return v;
@@ -165,6 +165,7 @@ function cpResult(t, r) {
       el("textarea", { class: "aktext", rows: 4, placeholder: "Your answers, notes, evidence and sources — in any order. The draft uses only this, your brief and QueryBook's facts; nothing is invented.",
         oninput: e => { CP.own = e.target.value; } }, CP.own || "")) : null,
     r.voice_text && r.voice_text !== r.text ? el("details", { class: "small", open: !(r.voice || {}).passed }, el("summary", {}, "VOICE check — verified, owned, insightful, clear, engaging (QueryBook's rules, no AI)"), el("pre", { class: "capout" }, r.voice_text)) : null,
+    r.story_text && r.story_text !== r.text ? el("details", { class: "small", open: !(r.story || {}).passed }, el("summary", {}, "Story check — six common habits (QueryBook's rules, no AI)"), el("pre", { class: "capout" }, r.story_text)) : null,
     r.editor_text ? el("details", { class: "small", open: true }, el("summary", {}, "An editor's second reading — it does not rewrite (made by: " + (r.editor_by || "AI") + ")"), el("pre", { class: "capout" }, r.editor_text)) : null,
     t.id === "write.doc" && r.stage === "plan" && r.can_draft ? el("div", { class: "akline" },
       el("button", { type: "button", class: "btn", disabled: CP.busy, onclick: () => cpStage(t, "draft") }, CP.busy ? "Writing…" : "Write it to this plan"),
