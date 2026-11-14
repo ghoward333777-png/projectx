@@ -343,7 +343,8 @@ class Commons:
             args.append(status)
         sql = "SELECT f.*, (SELECT count(DISTINCT app) FROM evidence e WHERE e.fact_id = f.id) AS apps FROM facts f"
         sql += (" WHERE " + " AND ".join(where)) if where else ""
-        return self.store.query(sql + " ORDER BY f.updated DESC, f.id DESC LIMIT ?", args + [min(int(limit or 50), 500)])
+        import sense                                     # 1.55: every shared fact carries its state (one of the four) and weight
+        return sense.rate_all(self.store.query(sql + " ORDER BY f.updated DESC, f.id DESC LIMIT ?", args + [min(int(limit or 50), 500)]))
 
     def fact(self, fid):
         f = self.store.one("SELECT * FROM facts WHERE id = ?", (fid,))
@@ -352,7 +353,8 @@ class Commons:
         f["evidence"] = self.store.query("SELECT * FROM evidence WHERE fact_id = ? ORDER BY app, method, source", (fid,))
         f["reasoning"] = self.store.query("SELECT * FROM reasoning WHERE fact_id = ? ORDER BY app, agent, step", (fid,))
         f["requests"] = self.store.query("SELECT * FROM requests WHERE fact_id = ? ORDER BY id", (fid,))
-        return f
+        import sense
+        return sense.rate(f)
 
     def agent_log(self, db, role, message, ms=None):
         db.execute("INSERT INTO agent_log(at, app, role, message, ms) VALUES(?,?,?,?,?)", (core.now_cs(), self.app_id, role, str(message)[:2000], ms))

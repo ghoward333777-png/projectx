@@ -441,7 +441,7 @@ function bind() {
   const bkGo = async () => { const r = await api("/api/bulk/search?q=" + encodeURIComponent($("#bk-q").value));
     $("#bk-out").innerHTML = (r.summary ? `<p class="muted small">${esc(r.summary)}</p>` : "") + (r.facts.length ? `<table class="t small"><tr><th>Subject</th><th>Predicate</th><th>Value</th><th>From</th></tr>` + r.facts.map(f =>
       `<tr><td>${f.link ? `<a href="${esc(f.link)}" target="_blank" rel="noopener">${esc(f.subject)}</a>` : esc(f.subject)}</td><td>${esc(f.predicate)}</td><td>${esc(f.object)}</td>
-       <td class="small">${esc(f.dataset)} · ${esc(f.provenance)} · ${esc(f.status)}</td></tr>`).join("") + "</table>" : `<p class="muted small">Nothing starts with that.</p>`);
+       <td class="small">${esc(f.dataset)} · ${esc(f.provenance)} · <b>${esc(f.state || "")}</b> (${esc(f.backing || f.status)}${f.weight != null ? ", " + Number(f.weight).toFixed(2) : ""})</td></tr>`).join("") + "</table>" : `<p class="muted small">Nothing starts with that.</p>`);
     if (r.routing === "shadow") setTimeout(loadDsn, 1500); };
   $("#dsn-refresh").onclick = () => loadDsn();
   $("#dsn-save").onclick = async () => { try { const r = await api("/api/dsn/mode", { mode: $("#dsn-mode").value, passphrase: $("#bk-pass").value });

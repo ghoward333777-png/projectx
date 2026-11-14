@@ -216,7 +216,7 @@ def answer(question: str, urls: dict[str, str], exact: bool = False) -> dict:
                         "where": f.get("dataset"), "status": f.get("status"), "link": f.get("link"), "provenance": f.get("provenance")},
                        **{k: f[k] for k in ("start", "end", "at", "rank", "qualifiers", "sources") if f.get(k)},     # 1.7.8: its dates, rank, sources
                        **({"context_read": bool(f["context_read"])} if "context_read" in f else {}),               # 1.8.1: False -> Fill Dates is offered
-                       **{k: f[k] for k in ("state", "backing", "state_why", "identity") if f.get(k)})              # 1.8.4: the four states; who it is about
+                       **{k: f[k] for k in ("state", "backing", "state_why", "identity", "weight") if f.get(k) is not None})   # 1.8.4: the four states; who it is about
                   for f in bulk.get("facts") or []]
         if bulk.get("entities"):                     # a grasp of reality: which match is meant, and what kind of thing it is
             judged = sense.answer_for(intent["question"], intent["subject"], bulk["entities"], bfacts)
@@ -245,8 +245,10 @@ def answer(question: str, urls: dict[str, str], exact: bool = False) -> dict:
     if isinstance(hist, dict) and not hist.get("_error"):
         for f in hist.get("facts") or []:
             facts.append({"subject": f.get("subject"), "predicate": f.get("predicate") or f.get("category"), "object": f.get("object"),
-                          "statement": f.get("statement"), "date": f.get("date"), "where": "History & News", "status": f.get("status")})
-    facts = rank(facts, intent)
+                          "statement": f.get("statement"), "date": f.get("date"), "where": "History & News", "status": f.get("status"),
+                          "disputed": f.get("disputed")})
+    facts = sense.rate_all(rank(facts, intent))          # 1.8.8: every fact unit carries one of the four states and its weight
+    out["states"] = sense.tally(facts)
     if facts:
         out["sections"].append({"source": "Facts", "app": "control", "kind": "facts", "items": facts[:40]})
         if not out["short"]:

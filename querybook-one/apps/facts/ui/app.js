@@ -1,6 +1,9 @@
 "use strict";
 let OPT = null, page = 0, lastQuery = {};
 
+// every fact's state — one of the four — with its weight
+const stateBadge = f => f && f.state ? ' <span class="badge ' + (f.state === "true" ? "good" : f.state === "undetermined" ? "warn" : "bad") + '" title="' + esc(f.state_why || "") + '">' +
+  esc(f.state) + (f.weight != null ? " " + Number(f.weight).toFixed(2) : "") + "</span>" : "";
 const statusBadge = s => s === "sourced" ? '<span class="badge good">sourced</span>' : s === "needs checking" ? '<span class="badge warn">needs checking</span>' : '<span class="badge bad">needs source</span>';
 const fmt = n => n === null || n === undefined ? "" : QB.num(n);
 const stat = (v, k) => '<div class="stat"><div class="v">' + esc(v) + '</div><div class="k">' + esc(k) + "</div></div>";
@@ -17,7 +20,7 @@ async function options() {
 
 function factRow(f) {
   return '<div class="fact" data-id="' + f.id + '"><div class="st">' + esc(f.statement) + '</div><div class="meta">' +
-    (f.date_text ? esc(f.date_text) + " · " : "") + (f.place ? esc(f.place) + " · " : "") + esc(f.category) + " · " + statusBadge(f.status) +
+    (f.date_text ? esc(f.date_text) + " · " : "") + (f.place ? esc(f.place) + " · " : "") + esc(f.category) + " · " + statusBadge(f.status) + stateBadge(f) +
     (f.disputed ? ' <span class="badge bad">disputed</span>' : "") + " · " + f.source_count + " source" + (f.source_count === 1 ? "" : "s") + "</div></div>";
 }
 
@@ -56,7 +59,7 @@ async function showFact(id) {
   const d = $("#detail");
   d.style.display = "block";
   d.innerHTML = '<h2>' + esc(f.statement) + "</h2>" +
-    '<p class="small">' + statusBadge(f.status) + (f.disputed ? ' <span class="badge bad">disputed</span>' : "") + " · " + esc(f.category) +
+    '<p class="small">' + statusBadge(f.status) + stateBadge(f) + (f.disputed ? ' <span class="badge bad">disputed</span>' : "") + " · " + esc(f.category) +
     (f.date_text ? " · " + esc(f.date_text) + (f.end_text ? " – " + esc(f.end_text) : "") : "") + (f.place ? " · " + esc(f.place) : "") + "</p>" +
     '<p class="small muted">About <b>' + esc(f.subject) + "</b>" + (f.predicate ? " · " + esc(f.predicate) + " · <b>" + esc(f.object || "") + "</b>" : "") +
     " · origin: " + esc(f.origin) + " · " + esc(f.created) + "</p>" +

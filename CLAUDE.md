@@ -199,6 +199,11 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   (1, 0, Z = nothing drives it: no confirming evidence, X = drivers disagree: sources conflict). The fuller status (verified,
   corroborated, computed, sourced, reported, unsourced, disputed, rejected) stays underneath as the reason (`backing`).
   One source = undetermined; two different sources named in the fact's own record = corroborated = true. Never promote a report.
+- EVERY fact is rated (the user: "We need this now - for every fact", engine 1.55): `sense.rate` adds `state`, `backing`,
+  `weight`, `state_why` wherever facts are returned — the bulk store (`find_entities`, search), the Commons (`qbcommons`),
+  History & News, the Ask box (`ask.answer`, with a `states` tally). Weights (`TRUTH_WEIGHT`): verified 1.0, computed 1.0,
+  corroborated 0.9, sourced 0.75, reported 0.4, disputed 0.3, unsourced 0.2, rejected 0.0. A new place that returns facts
+  must rate them; a fact with nothing recorded is undetermined, never assumed true.
 - IDENTITY is a separate field: resolved / unresolved / ambiguous / conflicting. A newspaper name is TRUE as printed and
   UNRESOLVED as to who: the "we don't know" zone. It is shown apart from a known person of the same name and never merged by name.
 

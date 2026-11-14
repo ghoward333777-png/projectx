@@ -455,7 +455,9 @@ function akSpeakBtn(text, small) {
 function akSection(s, fmt) {
   if (s.kind === "facts") {
     const rows = fmt === "table" || fmt === "full" || fmt === "auto" ? s.items : s.items.slice(0, 12);
+    const tl = s.items.reduce((a, f) => { if (f.state) a[f.state] = (a[f.state] || 0) + 1; return a; }, {});
     return el("div", { class: "card" }, el("h2", {}, `Facts (${s.items.length})`),
+      Object.keys(tl).length ? el("p", { class: "small muted" }, "State of these facts: " + ["true", "false", "undetermined", "conflicting"].map(k => `${k} ${tl[k] || 0}`).join(" · ")) : null,
       el("div", { class: "tbl" }, el("table", {}, el("tr", {}, el("th", {}, "Subject"), el("th", {}, "What"), el("th", {}, "Value"), el("th", {}, "Where it came from")),
         rows.map(f => el("tr", {}, el("td", {}, akName(f.subject)), el("td", {}, f.predicate || ""),
           el("td", {}, akLink(f.object || f.statement || ""), f.date ? el("div", { class: "small muted" }, f.date) : null,
@@ -463,7 +465,7 @@ function akSection(s, fmt) {
           el("td", {}, f.link ? el("a", { href: f.link, target: "_blank", rel: "noopener" }, f.where || "source") : (f.where || ""),
             // 1.8.4: the fact's state (true / false / undetermined / conflicting) with how it is backed; and whether we know who it is about
             f.state ? el("div", {}, el("span", { class: "chip " + (f.state === "true" ? "verified" : f.state === "false" ? "rejected" : f.state === "conflicting" ? "disputed" : "reported"),
-              title: f.state_why || "" }, f.state + (f.backing ? " · " + f.backing : "")),
+              title: f.state_why || "" }, f.state + (f.backing ? " · " + f.backing : "") + (f.weight != null ? " · " + Number(f.weight).toFixed(2) : "")),
               f.identity === "unresolved" ? el("span", { class: "chip", title: "A name as printed; which person of that name is not known" }, "unresolved name") : null)
               : f.status ? el("div", {}, el("span", { class: "chip " + f.status }, f.status)) : null,
             f.provenance ? el("div", { class: "small muted" }, f.provenance) : null,

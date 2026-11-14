@@ -383,6 +383,9 @@ function showMonitor(el, m) {
 }
 
 // ---------------------------------------------------------------- the Commons: shared facts and the harvest teams
+// every fact's state — true, false, undetermined or conflicting — with its weight (sense.rate)
+const cmState = f => f && f.state ? '<span class="badge ' + (f.state === "true" ? "good" : f.state === "undetermined" ? "warn" : "bad") + '" title="' + esc(f.state_why || "") + '">' +
+  esc(f.state) + (f.weight != null ? " " + Number(f.weight).toFixed(2) : "") + "</span> " : "";
 const CM_STATUS = { verified: "good", corroborated: "good", sourced: "good", reported: "warn", unsourced: "", disputed: "warn", rejected: "bad" };
 const cmTag = (text, cls) => '<span class="badge ' + (cls || "") + '">' + esc(text || "") + "</span>";
 const cmBadge = s => cmTag(s, CM_STATUS[s]);
@@ -441,7 +444,7 @@ async function renderCommons(el) {
       $("#cm-fact", el).innerHTML = "";
       $("#cm-facts", el).innerHTML = r.facts.length ? '<table class="t small"><tr><th>Subject</th><th>Predicate</th><th>Value</th><th>Domain</th><th>Status</th><th>Apps</th></tr>' +
         r.facts.map(f => '<tr data-cmf="' + f.id + '" style="cursor:pointer"><td>' + esc(f.subject) + "</td><td>" + esc(f.predicate) + "</td><td>" + esc(String(f.object).slice(0, 160)) +
-          "</td><td>" + esc(f.domain) + "</td><td>" + cmBadge(f.status) + "</td><td>" + f.apps + "</td></tr>").join("") + "</table>" : '<p class="muted">No shared facts match.</p>';
+          "</td><td>" + esc(f.domain) + "</td><td>" + cmState(f) + cmBadge(f.status) + "</td><td>" + f.apps + "</td></tr>").join("") + "</table>" : '<p class="muted">No shared facts match.</p>';
     };
     $("#cm-find", el).addEventListener("click", find);
     onEnter($("#cm-q", el), find);
@@ -449,7 +452,7 @@ async function renderCommons(el) {
       const tr = e.target.closest("tr[data-cmf]");
       if (!tr) return;
       const f = await api("/api/commons/fact", { id: Number(tr.dataset.cmf) });
-      $("#cm-fact", el).innerHTML = '<div class="note"><b>' + esc(f.subject) + " — " + esc(f.predicate) + ":</b> " + esc(f.object) + " " + cmBadge(f.status) +
+      $("#cm-fact", el).innerHTML = '<div class="note"><b>' + esc(f.subject) + " — " + esc(f.predicate) + ":</b> " + esc(f.object) + " " + cmState(f) + cmBadge(f.status) +
         ' <span class="small muted">confidence ' + f.confidence + " · first harvested by " + esc(f.origin_app) + "</span></div>" +
         "<h3>Evidence</h3>" + (f.evidence.length ? '<table class="t small"><tr><th>App</th><th>Method</th><th>Source</th><th>Licence</th><th>Verdict</th><th>Detail</th></tr>' +
           f.evidence.map(x => "<tr><td>" + esc(x.app) + "</td><td>" + esc(x.method) + "</td><td>" + (x.url ? '<a href="' + esc(x.url) + '" target="_blank" rel="noopener noreferrer">' + esc(x.source) + "</a>" : esc(x.source)) +

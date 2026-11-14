@@ -258,6 +258,22 @@ class StatesTest(unittest.TestCase):
         self.assertEqual((sense.truth_state(two)["state"], sense.truth_state(two)["backing"]), ("true", "corroborated"))
         self.assertEqual(sense.truth_state({"status": "reported", "sources": two["sources"]})["state"], "undetermined")   # a report is not promoted
 
+    def test_every_fact_gets_exactly_one_state_and_a_weight(self):
+        want = {"verified": ("true", 1.0), "corroborated": ("true", 0.9), "computed": ("true", 1.0), "sourced": ("undetermined", 0.75),
+                "reported": ("undetermined", 0.4), "unsourced": ("undetermined", 0.2), "disputed": ("conflicting", 0.3), "rejected": ("false", 0.0)}
+        for status, (state, weight) in want.items():
+            r = sense.rate({"subject": "x", "status": status})
+            self.assertEqual((r["state"], r["weight"], r["backing"]), (state, weight, status))
+            self.assertEqual(r["status"], status)                                   # the fact's own status is kept
+        self.assertEqual(sense.rate({"subject": "x"})["state"], "undetermined")     # nothing recorded: undetermined, never assumed true
+        # History & News's own words, and its disputed mark
+        self.assertEqual(sense.rate({"status": "needs checking"})["backing"], "reported")
+        self.assertEqual(sense.rate({"status": "needs sources"})["backing"], "unsourced")
+        self.assertEqual((sense.rate({"status": "sourced", "disputed": 1})["state"], sense.rate({"status": "sourced", "disputed": 1})["weight"]), ("conflicting", 0.3))
+        rows = sense.rate_all([{"status": "verified"}, {"status": "sourced"}, {"status": "rejected"}, {"status": "disputed"}, {}])
+        self.assertTrue(all(f["state"] in sense.TRUTH_STATES and "weight" in f for f in rows))
+        self.assertEqual(sense.tally(rows), {"true": 1, "false": 1, "undetermined": 2, "conflicting": 1})
+
     def test_a_newspaper_name_is_true_as_printed_and_unresolved_as_to_who(self):
         f = {"subject": "Harvey Jordan", "predicate": "in the news", "object": "1905-03-04 — The Greenville times (Greenville, Miss.), p. 1 — spoke — “…”", "status": "reported"}
         self.assertEqual(sense.identity_state("Harvey Jordan", [f])["state"], "unresolved")
@@ -280,6 +296,19 @@ class StatesTest(unittest.TestCase):
                                 [{"subject": "Harvey Jordan", "predicate": "in the news", "object": "1905-03-04 — The Greenville times (Greenville, Miss.), p. 1 — spoke — “…”"}])
         self.assertEqual(only["identity"]["state"], "unresolved")
         self.assertEqual(only["unresolved"], {})
+
+
+class EveryFactRatedTest(AskTest):
+    """every fact the Ask box returns carries one of the four states and its weight"""
+
+    def test_all_facts_in_an_answer_are_rated(self):
+        r = ask.answer("Who is Babe Ruth?", self.urls)
+        facts_ = [f for s_ in r["sections"] if s_.get("kind") == "facts" for f in s_["items"]]
+        self.assertTrue(facts_)
+        for f in facts_:
+            self.assertIn(f["state"], sense.TRUTH_STATES)
+            self.assertIn(f["weight"], (0.0, 0.2, 0.3, 0.4, 0.75, 0.9, 1.0))
+        self.assertEqual(sum(r["states"].values()), len(sense.rate_all(facts_)) if len(facts_) < 40 else sum(r["states"].values()))
 
 
 class DidYouMeanTest(AskTest):

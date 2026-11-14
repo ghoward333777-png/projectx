@@ -230,6 +230,10 @@ TRUTH_WHY = {"verified": "checked and confirmed", "corroborated": "two or more i
              "reported": "a report says so; not confirmed", "unsourced": "no source is recorded"}
 
 
+# the weight of each backing (the suite's own table; "computed" — recalculable — stands with "verified")
+TRUTH_WEIGHT = {"verified": 1.0, "corroborated": 0.9, "computed": 1.0, "sourced": 0.75, "reported": 0.4, "unsourced": 0.2, "disputed": 0.3, "rejected": 0.0}
+
+
 def independent_sources(fact: dict) -> int:
     """how many different sources a fact's own record names (the work it is stated in, else the address's site)"""
     seen: list[str] = []
@@ -246,11 +250,34 @@ def truth_state(fact: dict) -> dict:
     """{"state": one of TRUTH_STATES, "backing": the fuller status, "why"} for one fact. A fact one source states becomes
     corroborated — and so true — when its own record names two or more different sources; nothing else is promoted."""
     backing = str(fact.get("status") or "unsourced").lower()
+    if backing.startswith("needs"):                      # History & News says "needs checking" / "needs sources"
+        backing = "reported" if "check" in backing else "unsourced"
     if backing == "sourced" and independent_sources(fact) >= 2:
         backing = "corroborated"
     if backing not in TRUTH_OF:
         backing = "unsourced"
-    return {"state": TRUTH_OF[backing], "backing": backing, "why": TRUTH_WHY[backing]}
+    if fact.get("disputed") in (1, True, "1", "true") and backing != "rejected":
+        backing = "disputed"                             # marked as contradicted by another record: conflicting, whatever its backing
+    return {"state": TRUTH_OF[backing], "backing": backing, "why": TRUTH_WHY[backing], "weight": TRUTH_WEIGHT[backing]}
+
+
+def rate(fact: dict) -> dict:
+    """the fact with its rating: state (one of the four), backing, weight and why — every fact unit carries these"""
+    t = truth_state(fact)
+    return dict(fact, state=t["state"], backing=t["backing"], weight=t["weight"], state_why=t["why"])
+
+
+def rate_all(facts: list[dict]) -> list[dict]:
+    return [f if f.get("state") in TRUTH_STATES and "weight" in f else rate(f) for f in facts]
+
+
+def tally(facts: list[dict]) -> dict:
+    """how many facts stand in each of the four states"""
+    out = {s: 0 for s in TRUTH_STATES}
+    for f in facts:
+        st = str(f.get("state") or truth_state(f)["state"])
+        out[st] = out.get(st, 0) + 1
+    return out
 
 
 def identity_state(subject: str, facts: list[dict]) -> dict:

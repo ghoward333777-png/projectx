@@ -32,7 +32,7 @@ import qbnews  # noqa: E402  (names in the news: the extractor of the news latti
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.54.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.55.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -2186,7 +2186,7 @@ def find_entities(commons_folder, text, top=5, per=400, near=True):
                         f_.update({k: v for k, v in c_.items() if v})
                     f_["context_read"] = read_           # 1.49: False -> its dates have never been read: "Fill Dates" is offered
                     ts_ = _sense_mod().truth_state(f_)    # 1.51: the four states of a fact unit, and who it is about
-                    f_["state"], f_["backing"], f_["state_why"] = ts_["state"], ts_["backing"], ts_["why"]
+                    f_["state"], f_["backing"], f_["state_why"], f_["weight"] = ts_["state"], ts_["backing"], ts_["why"], ts_["weight"]
                     f_["identity"] = "unresolved" if key in NEWS_KEYS else "resolved"
                     facts.append(f_)
                     got += 1
@@ -5797,8 +5797,9 @@ def search_store(commons_folder, key, ds, text, limit):
             for s, pr, o, part, row in db.execute(
                     "SELECT f.s, pr.name, f.o, pa.name, f.row FROM facts f JOIN predicates pr ON pr.id = f.p JOIN parts pa ON pa.id = f.part "
                     "WHERE f.s >= ? AND f.s < ? LIMIT ?", (t, t + "\uffff", limit - len(out))):
-                out.append({"subject": s, "predicate": pr, "object": o, "dataset": ds.title, "source": ds.source or "computed",
-                            "licence": ds.licence, "provenance": "%s, row %d" % (part, row + 1), "link": ds.link(s), "status": "computed" if not ds.source else "sourced"})
+                out.append(_sense_mod().rate({"subject": s, "predicate": pr, "object": o, "dataset": ds.title, "source": ds.source or "computed",
+                            "licence": ds.licence, "provenance": "%s, row %d" % (part, row + 1), "link": ds.link(s),
+                            "status": "reported" if ds.key in NEWS_KEYS else "computed" if not ds.source else "sourced"}))     # 1.55: every fact is rated
     finally:
         db.close()
     return out

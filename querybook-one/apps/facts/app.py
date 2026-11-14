@@ -31,7 +31,7 @@ import sources as S
 
 APP_ID = "facts"
 APP_NAME = "QueryBook History & News"
-VERSION = "1.13.0"
+VERSION = "1.13.1"
 PORT = 8103
 program_dir = HERE
 
@@ -247,7 +247,8 @@ class App:
             f["others"] = self.store.query("""SELECT id, statement, object, date_text, disputed FROM facts
                                               WHERE lower(subject) = lower(?) AND predicate = ? AND id <> ? ORDER BY id LIMIT 20""",
                                            (f["subject"], f["predicate"], fid))
-        return f
+        import sense
+        return sense.rate(f)
 
     def search(self, p):
         where, args = [], []
@@ -291,7 +292,9 @@ class App:
         offset = max(0, int(p.get("offset") or 0))
         rows = self.store.query("SELECT * FROM (%s) ORDER BY %s LIMIT ? OFFSET ?" % (base, order), args + [limit, offset])
         total = self.store.scalar("SELECT count(*) FROM (%s)" % base, args, 0)
-        return {"facts": rows, "total": total}
+        import sense                                     # every fact carries its state (true / false / undetermined / conflicting) and weight
+        rows = sense.rate_all(rows)
+        return {"facts": rows, "total": total, "states": sense.tally(rows)}
 
     # ------------------------------------------------------------------ news feeds
     def add_feed(self, name, url):
