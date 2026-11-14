@@ -123,7 +123,7 @@ def _post(url: str, body: dict, timeout: float = 6.0) -> dict:
         return json.loads(r.read().decode("utf-8"))
 
 
-def answer(question: str, urls: dict[str, str]) -> dict:
+def answer(question: str, urls: dict[str, str], exact: bool = False) -> dict:
     intent = understand(question)
     out: dict = {"question": intent["question"], "understood": intent, "short": "", "sections": [], "asked": [], "unavailable": []}
     if intent["kind"] == "empty":
@@ -164,7 +164,7 @@ def answer(question: str, urls: dict[str, str]) -> dict:
                 """who or what is meant: every thing with this name, best known first, with all its facts (engine 1.40);
                 an older engine has no such route, and then the prefix search above answers as before"""
                 try:
-                    r = _get(base("control") + "/api/bulk/entity?" + urllib.parse.urlencode({"q": intent["subject"], "top": 6}), timeout=20)
+                    r = _get(base("control") + "/api/bulk/entity?" + urllib.parse.urlencode({"q": intent["subject"], "top": 6, "exact": "1" if exact else ""}), timeout=20)
                     if r.get("entities"):
                         return {"facts": r.get("facts") or [], "entities": r.get("entities") or []}
                 except Exception:
@@ -224,6 +224,10 @@ def answer(question: str, urls: dict[str, str]) -> dict:
             out["missing"] = judged["missing"]
             out["known_for"] = judged.get("known_for") or {}
             out["identity_state"] = judged.get("identity") or {}
+            top_ = (judged["entity"].get("ranked") or [{}])[0]
+            if top_.get("assumed"):                  # a misspelling: the well-known one is shown first, and the person is ASKED
+                out["did_you_mean"] = {"typed": intent["subject"], "name": str(top_["assumed"]),
+                                       "ask": "You typed “%s”. Did you mean the well-known %s?" % (intent["subject"], top_["assumed"])}
             out["unresolved"] = judged.get("unresolved") or {}
             if judged["said"] and not intent["hints"] and not out["short"] and not judged["missing"]:
                 out["short"] = judged["said"]

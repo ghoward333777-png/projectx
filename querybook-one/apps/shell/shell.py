@@ -34,7 +34,7 @@ import caps
 import qbcompose
 import modes
 
-VERSION = "1.8.4"
+VERSION = "1.8.5"
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 PORT = 8090
@@ -281,7 +281,7 @@ def ask_mode(body: dict, urls: dict) -> dict:
     asked = q
     if mode == "verify":
         asked = modes.claim_subject(q) or q
-    r = ask.answer(asked, urls)
+    r = ask.answer(asked, urls, bool(body.get("exact")))
     r["question"] = q
     if mode == "verify":
         r["claim"] = q

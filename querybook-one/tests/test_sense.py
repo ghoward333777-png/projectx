@@ -90,6 +90,7 @@ class Panel(http.server.BaseHTTPRequestHandler):
     """the Control Panel's routes the Ask box uses"""
     demand: list = []
     world: dict = {}
+    asked_exact: list = []
 
     def log_message(self, *a):
         pass
@@ -106,7 +107,9 @@ class Panel(http.server.BaseHTTPRequestHandler):
         u = urllib.parse.urlsplit(self.path)
         q = dict(urllib.parse.parse_qsl(u.query))
         if u.path == "/api/bulk/entity":
-            return self._send(Panel.world.get(q.get("q", "").lower(), {"entities": [], "facts": []}))
+            Panel.asked_exact.append(q.get("exact", ""))
+            return self._send(Panel.world.get(q.get("q", "").lower() + ("|exact" if q.get("exact") == "1" else ""),
+                                              Panel.world.get(q.get("q", "").lower(), {"entities": [], "facts": []})))
         if u.path == "/api/bulk/search" and q.get("q", "").lower() == "dodgers":      # the old search: names that BEGIN with the words
             return self._send({"facts": facts("Dodgers–Giants rivalry (Q1)", [("instance of", "sports rivalry (Q2)")])})
         return self._send({"facts": []})
@@ -277,6 +280,31 @@ class StatesTest(unittest.TestCase):
                                 [{"subject": "Harvey Jordan", "predicate": "in the news", "object": "1905-03-04 — The Greenville times (Greenville, Miss.), p. 1 — spoke — “…”"}])
         self.assertEqual(only["identity"]["state"], "unresolved")
         self.assertEqual(only["unresolved"], {})
+
+
+class DidYouMeanTest(AskTest):
+    """a misspelt name: the well-known person is shown first AND the person is asked; "No" searches exactly what was typed"""
+
+    def test_the_famous_one_first_and_the_question_is_asked(self):
+        pres = facts("Abraham Lincoln (Q91)", [("instance of", "human (Q5)"), ("occupation", "politician"), ("description", "16th president of the United States")])
+        farmer = facts("Abraham Lincon (Q777001)", [("instance of", "human (Q5)"), ("occupation", "farmer")])
+        Panel.world["abraham lincon"] = {"entities": [
+            {"subject": "Abraham Lincoln (Q91)", "facts": 3, "fame": 250, "exact": False, "assumed_from_spelling": "Abraham Lincoln"},
+            {"subject": "Abraham Lincon (Q777001)", "facts": 2, "fame": 0, "exact": True}], "facts": pres + farmer}
+        Panel.world["abraham lincon|exact"] = {"entities": [{"subject": "Abraham Lincon (Q777001)", "facts": 2, "fame": 0, "exact": True}], "facts": farmer}
+        r = ask.answer("Who is Abraham Lincon?", self.urls)
+        self.assertEqual(r["entity"]["subject"], "Abraham Lincoln (Q91)")          # the famous one, first
+        self.assertEqual(r["did_you_mean"]["name"], "Abraham Lincoln")
+        self.assertEqual(r["did_you_mean"]["ask"], "You typed “Abraham Lincon”. Did you mean the well-known Abraham Lincoln?")
+        self.assertIn("president", r["short"])
+        no = ask.answer("Who is Abraham Lincon?", self.urls, True)                   # "No — search exactly what I typed"
+        self.assertEqual(no["entity"]["subject"], "Abraham Lincon (Q777001)")
+        self.assertNotIn("did_you_mean", no)
+        self.assertEqual(Panel.asked_exact[-1], "1")
+
+    def test_a_name_spelled_right_is_not_questioned(self):
+        r = ask.answer("Who is Babe Ruth?", self.urls)
+        self.assertNotIn("did_you_mean", r)
 
 
 class NewsNameTest(unittest.TestCase):

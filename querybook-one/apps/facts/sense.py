@@ -154,19 +154,25 @@ def choose(question: str, entities: list[dict], facts: list[dict]) -> dict:
         # a full name typed out and matched exactly ("Ed Sullivan") is a far stronger sign than one word that many share
         full = len(clean(s).split()) >= 2
         exact = (600.0 if full else 150.0) if e.get("exact", True) else 0.0
+        # the famous one is meant: a well-known name a letter or two from what was typed stands level with a name typed exactly,
+        # so that being well known decides — the president, not an obscure man whose name happens to be the misspelling
+        if e.get("assumed_from_spelling"):
+            exact = 600.0 if full else 150.0
         score = (1000.0 if want and k in want else 0.0) + (0.0 if about else 300.0) + exact + 60.0 * math.log10(1.0 + views) \
             + 6.0 * min(fame, 150.0) + 40.0 * math.log10(1.0 + n)
         said = next((clean(f.get("object")) for f in fs if str(f.get("predicate") or "").lower() == "description"), "") or \
             next((clean(f.get("object")) for f in fs if str(f.get("predicate") or "").lower() in ("instance of", "occupation")), "")
         ranked.append({"subject": s, "kind": k, "about": about, "score": round(score, 1), "fame": e.get("fame"), "views": e.get("views"),
-                       "facts": int(n), "what": said, "exact": bool(e.get("exact", True))})
+                       "facts": int(n), "what": said, "exact": bool(e.get("exact", True)), "assumed": str(e.get("assumed_from_spelling") or "")})
     ranked.sort(key=lambda r: (-r["score"], r["subject"]))
     if not ranked:
         return {"subject": "", "kind": "", "why": "", "ranked": [], "only_about": False}
     top = ranked[0]
     only_about = bool(top["about"]) and not any(not r["about"] for r in ranked)
     why = "%s is %s" % (clean(top["subject"]), KIND_WORD.get(top["kind"], "a thing"))
-    if not top.get("exact", True):
+    if top.get("assumed"):
+        why = "no well-known subject is spelled that way, so the well-known %s is assumed: " % top["assumed"] + why
+    elif not top.get("exact", True):
         why = "the best-known thing by that name: " + why
     if top.get("views"):
         why += ", among the most-read subjects on Wikipedia"

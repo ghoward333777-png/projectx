@@ -390,6 +390,10 @@ function akAnswer(r) {
     // 1.7.6: several occupations — which one the person is best known for, and why
     r.known_for && r.known_for.best && (r.known_for.also || []).length ? el("p", { class: "small muted" },
       "Roles: " + r.known_for.why + ". Also: " + r.known_for.also.join(", ") + ".") : null,
+    // 1.8.5: a misspelt name — the well-known one is shown first, and the person is asked
+    r.did_you_mean ? el("div", { class: "note" }, el("b", {}, r.did_you_mean.ask), " ",
+      el("button", { type: "button", class: "btn small", onclick: () => { document.getElementById("askinput").value = r.did_you_mean.name; akAsk(r.question.replace(r.did_you_mean.typed, r.did_you_mean.name)); } }, "Yes"), " ",
+      el("button", { type: "button", class: "btn ghost small", onclick: () => akAsk(r.question, { exact: true }) }, "No — search exactly what I typed")) : null,
     (r.identity_state || {}).state === "unresolved" ? el("p", { class: "note" }, "We don't know who this is: " + r.identity_state.why + ".") : null,
     (r.unresolved || {}).why ? el("p", { class: "small muted" }, r.unresolved.why) : null,
     r.missing ? el("p", { class: "note" }, r.missing + (r.learning ? " " + r.learning : "")) : null,

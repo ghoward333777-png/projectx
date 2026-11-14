@@ -160,6 +160,10 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
   Never add a Wikidata code from memory without checking its label (four in `HOT` were wrong).
 - The dump lanes read never-read positions first and finish an edition before a new one is fetched. Do not go back to
   "newest edition, part 1" — that is why whole stretches of Wikidata were never read.
+- The famous one is meant (the user, engine 1.52): when nothing well known answers to the name as typed, the well-known names
+  a letter or two away are looked for (`wd_names_near`, `FAMOUS_FAME`) and the best known goes FIRST — and the person is ASKED
+  ("Did you mean the well-known …?" — `did_you_mean`; "No" re-asks with `exact`, `find_entities(near=False)`). Never swap
+  silently. A namesake nobody has heard of never outranks the famous person; an unresolved newspaper name never does.
 - Answers go through `find_entities` + `sense.answer_for`: the kind of each match, the kind the question expects, the thing
   itself above things made about it (a card, a film, an award), fame, identifiers last. Never return "the first match".
 - When nothing (or only a thing-about) is held, say so and queue the subject (`/api/bulk/demand`). Never pretend.
