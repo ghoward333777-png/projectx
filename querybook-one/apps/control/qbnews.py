@@ -117,7 +117,8 @@ WINDOW = 14
 
 def _cap(tok: str) -> str:
     """a token as a name part: 'JORDAN' -> 'Jordan', 'Jordan' -> 'Jordan'; '' when it is not shaped like one"""
-    t = tok.strip(".,;:()[]\"'")
+    t = tok.strip(".,;:()[]\"'“”‘’")
+    t = re.sub(r"['’]s$", "", t)                        # "Heath's" names Heath
     if CAP.match(t):
         return t
     if ALLCAP.match(t):
@@ -217,3 +218,11 @@ def fact_object(date: str, paper: str, page: int, mention: dict) -> str:
     """what is recorded for one mention: the date first (so mentions sort in time), the paper and page, the reason, and the
     paper's own words"""
     return "%s — %s, p. %d — %s — “%s”" % (date, paper, page, mention["reason"], mention["context"])
+
+
+def text_address(image_url: str) -> str:
+    """the address of a page's whole machine-read text, from the address of its image as the archive lists it:
+    '…/iiif/service:ndnp:msar:batch_x:data:sn85034374:00295877728:1905030401:0035/full/…' ->
+    '/service/ndnp/msar/batch_x/data/sn85034374/00295877728/1905030401/0035.xml'; '' when the image is not of that kind"""
+    m = re.search(r"/iiif/(service:ndnp:[A-Za-z0-9_:.-]+)/", image_url or "")
+    return "/" + m.group(1).replace(":", "/") + ".xml" if m else ""

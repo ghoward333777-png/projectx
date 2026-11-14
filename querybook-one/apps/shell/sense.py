@@ -261,6 +261,109 @@ def identity_state(subject: str, facts: list[dict]) -> dict:
     return {"state": "resolved", "why": "identified by its source's own record"}
 
 
+# ---- is a newspaper's name THIS person? Never decided by the name alone. Each mention is weighed against what the store holds
+# about the person: was the person alive then; does the office the paper gives match one the person held; is the paper's place
+# one of the person's places; does a report of a death fall at the person's death. The verdict is one of three, with its
+# reasons, and it is an ANALYSIS shown beside the answer — the mention is never merged into the person's record.
+MENTION = re.compile(r"^(\d{4})-(\d{2})-(\d{2}) — (.*?), p\. (\d+) — (.*?) — “(.*)”$")
+STATE_ABBR = {"ala": "Alabama", "alaska": "Alaska", "ariz": "Arizona", "ark": "Arkansas", "cal": "California", "calif": "California", "colo": "Colorado",
+              "conn": "Connecticut", "del": "Delaware", "d.c": "District of Columbia", "fla": "Florida", "ga": "Georgia", "hawaii": "Hawaii",
+              "idaho": "Idaho", "ill": "Illinois", "ind": "Indiana", "iowa": "Iowa", "kan": "Kansas", "kans": "Kansas", "ky": "Kentucky", "la": "Louisiana",
+              "me": "Maine", "md": "Maryland", "mass": "Massachusetts", "mich": "Michigan", "minn": "Minnesota", "miss": "Mississippi", "mo": "Missouri",
+              "mont": "Montana", "neb": "Nebraska", "nebr": "Nebraska", "nev": "Nevada", "n.h": "New Hampshire", "n.j": "New Jersey", "n.m": "New Mexico",
+              "n.y": "New York", "n.c": "North Carolina", "n.d": "North Dakota", "ohio": "Ohio", "okla": "Oklahoma", "or": "Oregon", "ore": "Oregon",
+              "pa": "Pennsylvania", "r.i": "Rhode Island", "s.c": "South Carolina", "s.d": "South Dakota", "tenn": "Tennessee", "tex": "Texas",
+              "utah": "Utah", "vt": "Vermont", "va": "Virginia", "wash": "Washington", "w. va": "West Virginia", "w.va": "West Virginia",
+              "wis": "Wisconsin", "wyo": "Wyoming"}
+OFFICE_WORDS = ("president", "senator", "governor", "judge", "justice", "mayor", "general", "colonel", "admiral", "secretary", "bishop",
+                "professor", "congressman", "representative", "ambassador", "sheriff", "king", "queen", "pope", "minister", "captain")
+PLACE_PREDS = ("place of birth", "place of death", "residence", "work location", "place of burial", "headquarters location", "educated at")
+
+
+def mention_parts(obj: str) -> dict:
+    """a news-lattice fact's value taken apart: {"year", "date", "paper", "town", "state", "page", "reason", "context"}; {} when it is not one"""
+    m = MENTION.match(clean(obj) if "(Q" in obj else obj)
+    if not m:
+        return {}
+    paper = m.group(4)
+    pm = re.search(r"\(([^()]*)\)\s*$", paper)
+    town, state = "", ""
+    if pm:
+        bits = [b.strip() for b in pm.group(1).replace("[", "").replace("]", "").split(",")]
+        town = bits[0] if bits else ""
+        if len(bits) > 1:
+            state = STATE_ABBR.get(bits[-1].lower().rstrip("."), bits[-1].rstrip("."))
+    return {"year": int(m.group(1)), "date": "%s-%s-%s" % (m.group(1), m.group(2), m.group(3)), "paper": paper, "town": town, "state": state,
+            "page": int(m.group(5)), "reason": m.group(6), "context": m.group(7)}
+
+
+def match_mention(obj: str, person: list[dict]) -> dict:
+    """does one newspaper mention fit this person? {"verdict": "likely" | "possible" | "impossible", "why": [...]}.
+    impossible: printed before the person was born (or when a small child). likely: within the person's life AND something
+    more agrees (an office, a place, the date of death). possible: nothing against it and nothing more for it — or printed
+    after the person's death, when a paper may be writing about them or about someone else of the name."""
+    mp = mention_parts(obj)
+    if not mp:
+        return {"verdict": "possible", "why": ["the mention carries no date"]}
+    born, died = first(person, "date of birth"), first(person, "date of death")
+    by, dy = year(born), year(died)
+    why: list[str] = []
+    if by and mp["year"] < int(by):
+        return {"verdict": "impossible", "why": ["printed in %d, before the birth in %s" % (mp["year"], by)]}
+    if by and mp["year"] < int(by) + 12 and mp["reason"] != "born":
+        return {"verdict": "impossible", "why": ["printed in %d, when the person was a child of %d" % (mp["year"], mp["year"] - int(by))]}
+    after = bool(dy) and mp["year"] > int(dy)
+    low = (mp["context"] + " ").lower()
+    held = " ".join(clean(f.get("object")).lower() for f in person if str(f.get("predicate") or "").lower() in ("position held", "occupation", "military rank", "noble title"))
+    for w in OFFICE_WORDS:
+        if w in low and w in held:
+            why.append("the paper says “%s”, an office or calling the person had" % w)
+            break
+    places = " ".join(clean(f.get("object")).lower() for f in person if str(f.get("predicate") or "").lower() in PLACE_PREDS)
+    for place in (mp["town"], mp["state"]):
+        if place and len(place) > 3 and place.lower() in places:
+            why.append("the paper is from %s, one of the person's places" % place)
+            break
+    if mp["reason"] == "died" and died and mp["date"] >= died[:10] and year(died) == str(mp["year"]):
+        why.append("it reports a death, printed in the year the person died (%s)" % died[:10])
+    if mp["reason"] == "born" and by and int(by) == mp["year"]:
+        why.append("it reports a birth, in the person's year of birth")
+    for f in person:
+        if str(f.get("predicate") or "").lower() == "position held" and year(str(f.get("start") or "")) == str(mp["year"]) and mp["reason"] == "elected or appointed":
+            why.append("it reports an election or appointment in %d, the year the person took office as %s" % (mp["year"], clean(f.get("object"))))
+            break
+    if after:
+        return {"verdict": "possible", "why": ["printed in %d, after the person's death in %s: it may be about them, or someone else of the name" % (mp["year"], dy)] + why}
+    if why and (by or dy):
+        return {"verdict": "likely", "why": ["printed in %d, within the person's life" % mp["year"]] + why}
+    if why:
+        return {"verdict": "possible", "why": why + ["the person's dates are not held, so the time cannot be checked"]}
+    return {"verdict": "possible", "why": ["printed in %d%s; nothing more ties it to this person" % (mp["year"], ", within the person's life" if by else "")]}
+
+
+def weigh_mentions(news: list[dict], person: list[dict]) -> dict:
+    """every newspaper mention of a name weighed against one known person: {"likely", "possible", "impossible", "of",
+    "examples": [{"date", "paper", "reason", "verdict", "why"}], "say"} — an analysis, never a merge"""
+    counts = {"likely": 0, "possible": 0, "impossible": 0}
+    rows: list[dict] = []
+    for f in news:
+        mp = mention_parts(str(f.get("object") or ""))
+        v = match_mention(str(f.get("object") or ""), person)
+        counts[v["verdict"]] += 1
+        if mp:
+            rows.append({"date": mp["date"], "paper": mp["paper"], "reason": mp["reason"], "verdict": v["verdict"], "why": v["why"]})
+    rows.sort(key=lambda r: ({"likely": 0, "impossible": 1, "possible": 2}[str(r["verdict"])], str(r["date"])))
+    of = len(news)
+    bits = []
+    if counts["likely"]:
+        bits.append("%d fit by date and by something more (likely this person)" % counts["likely"])
+    if counts["possible"]:
+        bits.append("%d have nothing against them and nothing more for them" % counts["possible"])
+    if counts["impossible"]:
+        bits.append("%d cannot be this person (printed before the birth, or in childhood)" % counts["impossible"])
+    return dict(counts, of=of, examples=rows[:6], say="Of %d newspaper mention%s of the name: %s." % (of, "" if of == 1 else "s", "; ".join(bits)) if of else "")
+
+
 def period(f: dict) -> str:
     """when a fact held, from its own context (1.48): "1981–1989", "since 2009", "until 1975", "1969" — or "" when the
     store holds no date for it. Never guessed."""
@@ -505,4 +608,10 @@ def answer_for(question: str, subject: str, entities: list[dict], facts: list[di
         zone = {"name": clean(apart[0]["subject"]), "mentions": n,
                 "why": "The name “%s” is also printed in newspapers (%d mention%s held). Those are unresolved: they may be this %s or someone else of the name." % (
                     clean(apart[0]["subject"]), n, "" if n == 1 else "s", "person" if pick["kind"] == "human" else "subject")}
+        if pick["kind"] == "human":                       # each mention weighed against the person's own facts — shown, never merged
+            news = [f for e in apart for f in group(facts).get(str(e.get("subject") or "")) or [] if str(f.get("predicate") or "").lower() == "in the news"]
+            w = weigh_mentions(news, mine)
+            if w["of"]:
+                zone["weighed"] = w
+                zone["why"] += " " + w["say"] + " They are kept apart from the record either way."
     return {"entity": pick, "facts": mine, "said": said, "missing": missing, "known_for": known, "identity": ident, "unresolved": zone}

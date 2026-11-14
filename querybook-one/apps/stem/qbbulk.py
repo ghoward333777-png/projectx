@@ -32,7 +32,7 @@ import qbnews  # noqa: E402  (names in the news: the extractor of the news latti
 import qbtrace as qt  # noqa: E402  (instrumentation: every stage, every I/O, every failure → <shared folder>/trace/*.jsonl)
 TR, _NS, _WALL = qt.TR, qt._NS, qt._WALL
 
-VERSION = "1.53.0"                 # the bulk engine; an engine of another version still running is replaced on Start
+VERSION = "1.54.0"                 # the bulk engine; an engine of another version still running is replaced on Start
 UA = "QueryBook-harvester/%s (+https://github.com/ghoward333777-png/projectx; personal research tool; bulk files, one stream per dataset)" % VERSION
 BATCH = 500_000                    # facts per transaction: appended to the shard's stage (see Shard), so a batch costs the same
                                    # whatever the shard's size
@@ -686,9 +686,11 @@ def news_last_year(today=None):
     return (today or datetime.date.today()).year - 96
 
 
-def NEWS_FETCH(day, sp):
-    """one request to the archive: the newspaper pages of one day, 100 at a time (the tests replace this)"""
-    q = urllib.parse.urlencode({"dl": "page", "dates": day, "fo": "json", "c": NEWS_PER, "sp": sp, "at": "results,pagination"})
+def NEWS_FETCH(day, sp, front=False):
+    """one request to the archive: the newspaper pages of one day, 100 at a time — every page, or front pages only (the tests
+    replace this)"""
+    q = urllib.parse.urlencode(dict({"dl": "page", "dates": day, "fo": "json", "c": NEWS_PER, "sp": sp, "at": "results,pagination"},
+                                    **({"fa": "number_page:0000000001"} if front else {})))
     with urllib.request.urlopen(_req(NEWS_API + "?" + q), timeout=120) as r:
         return json.loads(r.read())
 
@@ -765,6 +767,80 @@ class NewsNames(Dataset):
             links[m["name"]] = row.get("url") or ""
             out.append((m["name"], "in the news", qbnews.fact_object(row["date"], paper, page, m)))
         return out
+
+
+# ---- 1.54: whole front pages. The head of a page gives about 7 names; its whole text gives about 30 (measured on one front
+# page: 7 against 31). The whole text is one more request a page, so this lattice takes the FRONT page of every issue — where
+# the day's news is — day by day across all the years, as the head pass does. Same source, same 95-year rule, same record.
+NEWS_TEXT = "https://tile.loc.gov/text-services/word-coordinates-service"
+
+
+def NEWS_TEXT_FETCH(segment):
+    """the whole machine-read text of one newspaper page (the tests replace this)"""
+    q = urllib.parse.urlencode({"segment": segment, "format": "alto_xml", "full_text": "1"})
+    with urllib.request.urlopen(_req(NEWS_TEXT + "?" + q), timeout=120) as r:
+        d = json.loads(r.read())
+    return " ".join(str(v.get("full_text") or "") for v in d.values() if isinstance(v, dict))
+
+
+class NewsFrontPages(NewsNames):
+    key = "hot-news-front"
+    title = "News lattice — whole front pages of America's newspapers, day by day (Library of Congress)"
+    why = ("the day's news in full: every name on the front page of every issue, with the day, the paper, its town, the reason and "
+           "the paper's own words — about four times as many names a page as the head pass finds")
+    approx = "about 59,000 days and 3 million front pages, 1770 to 1930: a slow pass, one page a request"
+    TEXT_GAP_S = 2.0
+
+    def rows(self, part, url, state):
+        day = url.split("#")[1]
+        if int(day[:4]) > news_last_year():
+            return iter(())
+
+        def pages():
+            sp, started = 1, False
+            while sp <= NEWS_MAX_PAGES:
+                last = state.get("_last", 0)
+                if last and time.time() - last < self.GAP_S:
+                    time.sleep(self.GAP_S - (time.time() - last))
+                try:
+                    d = NEWS_FETCH(day, sp, True)
+                except urllib.error.HTTPError as e:
+                    if e.code in REFUSED + (502, 504):
+                        raise Busy("the Library of Congress asked us to slow down (HTTP %d); this day continues on the next run" % e.code)
+                    raise
+                except (http.client.HTTPException, urllib.error.URLError, TimeoutError, ConnectionError, ValueError) as e:
+                    raise Busy("the Library of Congress did not answer whole (%s); this day continues on the next run" % type(e).__name__)
+                finally:
+                    state["_last"] = time.time()
+                pg = d.get("pagination") or {}
+                if not started:
+                    METER.start(int(pg.get("of") or 0), "front pages")
+                    started = True
+                for r in d.get("results") or []:
+                    if r.get("date") != day:
+                        continue
+                    seg = next((qbnews.text_address(u) for u in r.get("image_url") or [] if qbnews.text_address(u)), "")
+                    if not seg:
+                        continue                         # (a bound volume or a page with no text of that kind: left to the head pass)
+                    lt = state.get("_tlast", 0)
+                    if lt and time.time() - lt < self.TEXT_GAP_S:
+                        time.sleep(self.TEXT_GAP_S - (time.time() - lt))
+                    try:
+                        text = NEWS_TEXT_FETCH(seg)
+                    except urllib.error.HTTPError as e:
+                        if e.code in REFUSED + (502, 504):
+                            raise Busy("the Library of Congress asked us to slow down (HTTP %d); this day continues on the next run" % e.code)
+                        continue                         # this page's text is not there: the next page
+                    except (http.client.HTTPException, urllib.error.URLError, TimeoutError, ConnectionError, ValueError):
+                        continue
+                    finally:
+                        state["_tlast"] = time.time()
+                    if text.strip():
+                        yield dict(r, description=[text])
+                if not pg.get("next"):
+                    break
+                sp += 1
+        return pages()
 
 
 class FoodData(Dataset):
@@ -1973,6 +2049,9 @@ def name_forms(text):
     return list(dict.fromkeys(f for f in forms if f))
 
 
+NEWS_KEYS = ("hot-news", "hot-news-front")
+
+
 def _sense_mod():
     import sense
     return sense
@@ -2074,7 +2153,7 @@ def find_entities(commons_folder, text, top=5, per=400, near=True):
              "views": views.get(qn_of.get(s_)), "stores": e["stores"], "by_other_name": bool(e.get("alias")),
              "by_part_of_name": bool(e.get("part")), "exact": not e.get("alias") and not e.get("part") and not e.get("spelling"),
              "assumed_from_spelling": e.get("spelling") or "",
-             "identity": "unresolved" if e["stores"] == ["hot-news"] * len(e["stores"]) and s_ not in qn_of else "resolved"} for s_, e in found.items()]
+             "identity": "unresolved" if all(k_ in NEWS_KEYS for k_ in e["stores"]) and s_ not in qn_of else "resolved"} for s_, e in found.items()]
     # best known first: what people read (page views), then how widely it is written about (Wikipedias), then how much is held
     if qn_of and any(e["views"] for e in ents):         # 1.47: how each one's demand behaves (lasting, or a week in the news)
         series, sampled = wd_demand(commons_folder, [qn_of[e["subject"]] for e in ents if e["views"] and e["subject"] in qn_of])
@@ -2100,7 +2179,7 @@ def find_entities(commons_folder, text, top=5, per=400, near=True):
                         "LEFT JOIN links l ON l.fp = f.fp WHERE f.s = ? LIMIT ?", (e["subject"], per - got)):
                     f_ = {"subject": s_, "predicate": pr, "object": o, "dataset": ds.title, "source": ds.source or "computed", "licence": ds.licence,
                           "provenance": "%s, row %d" % (part, row + 1), "link": ds.link(s_) or url_, "status": "computed" if not ds.source else "sourced"}
-                    if key == "hot-news":                 # a newspaper's report: reported, not confirmed; a name as printed, not a person
+                    if key in NEWS_KEYS:                  # a newspaper's report: reported, not confirmed; a name as printed, not a person
                         f_["status"] = "reported"
                     c_ = ctx_of.get((pr, o))
                     if c_:                               # 1.48: when it held, its rank, where it is stated
@@ -2108,7 +2187,7 @@ def find_entities(commons_folder, text, top=5, per=400, near=True):
                     f_["context_read"] = read_           # 1.49: False -> its dates have never been read: "Fill Dates" is offered
                     ts_ = _sense_mod().truth_state(f_)    # 1.51: the four states of a fact unit, and who it is about
                     f_["state"], f_["backing"], f_["state_why"] = ts_["state"], ts_["backing"], ts_["why"]
-                    f_["identity"] = "unresolved" if key == "hot-news" else "resolved"
+                    f_["identity"] = "unresolved" if key in NEWS_KEYS else "resolved"
                     facts.append(f_)
                     got += 1
             except sqlite3.Error:
@@ -3694,7 +3773,7 @@ def demand_report(commons_folder, top=40):
 
 def catalog():
     # 1.40: the demand agent and the hot lattices come first — what people ask about is harvested before anything else
-    return {d.key: d for d in (WikidataDemand(), WikidataSeed()) + tuple(WikidataIcons(n) for n in ICONS) + (WikidataCircle(), WikidataMostRead(), WikidataContext(), NewsNames()) + tuple(WikidataHot(n) for n in HOT) + tuple(WikidataDomain(n) for n in DOMAINS) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
+    return {d.key: d for d in (WikidataDemand(), WikidataSeed()) + tuple(WikidataIcons(n) for n in ICONS) + (WikidataCircle(), WikidataMostRead(), WikidataContext(), NewsNames(), NewsFrontPages()) + tuple(WikidataHot(n) for n in HOT) + tuple(WikidataDomain(n) for n in DOMAINS) + (WikidataDownload(), PubChem(), Taxonomy(), Weather(), GNIS(), FoodData(), Tatoeba(), Calendar(), Series(), MitOcw()) + tuple(WikidataDump(k) for k in range(1, WikidataDump.LANES + 1)) + (WikidataLattice(),)}
 
 
 # ------------------------------------------------------------------------------------------------ the shard
@@ -4918,7 +4997,7 @@ HOT_RETRY_S = 120                  # a hot set that was refused or interrupted i
 def hot_first(key):
     """the sets everything else waits for: the icons, what people read, the hot lattices (not the demand agent, which is
     always on, and not the complete domains — millions of records over days — which run after, beside the rest)"""
-    return key.startswith("hot-") and key not in ("hot-demand", "hot-circle", "hot-context", "hot-news") and not key.startswith("hot-all-")
+    return key.startswith("hot-") and key not in ("hot-demand", "hot-circle", "hot-context", "hot-news", "hot-news-front") and not key.startswith("hot-all-")
 
 
 def next_try(r, fails):
@@ -7934,10 +8013,43 @@ def self_test():
                 rows_n = list(nn_.rows("news 1905-03-04", "news#1905-03-04", st_n))
                 facts_n = [f_ for r_ in rows_n for f_ in nn_.facts("news 1905-03-04", r_, st_n)]
                 late_ = list(nn_.rows("news 1990-01-01", "news#1990-01-01", {}))
+                # 1.54 whole front pages: the text of each front page is fetched by an address made from its image's address
+                text_was, tgap_was = NEWS_TEXT_FETCH, NewsFrontPages.TEXT_GAP_S
+                asked_t = []
+
+                def _front(day, sp, front=False):
+                    asked_n.append((day, sp, front))
+                    return {"results": [
+                        {"date": day, "title": "Image 1 of The Greenville times (Greenville, Miss.), March 4, 1905", "number_page": ["0000000001"],
+                         "url": "https://www.loc.gov/resource/sn85034374/1905-03-04/ed-1/?sp=1", "description": ["Pres Harvey Jordan will speak"],
+                         "image_url": ["https://tile.loc.gov/image-services/iiif/service:ndnp:msar:batch_x:data:sn85034374:002:1905030401:0035/full/pct:6.25/0/default.jpg"]},
+                        {"date": day, "title": "Image 1 of A bound volume", "number_page": ["0000000001"], "url": "https://www.loc.gov/resource/gdc.1/?sp=1",
+                         "description": ["x"], "image_url": ["https://tile.loc.gov/image-services/iiif/public:gdc:1:0001/full/pct:6.25/0/default.jpg"]}],
+                        "pagination": {"of": 2}}
+
+                def _text(seg):
+                    asked_t.append(seg)
+                    return ("Pres. Harvey Jordan of the Southern Cotton Association will speak in this city. Mr. LeRoy Percy appeared in court on Friday. "
+                            "Capt. Heath's company returned. Mrs. Jane L. Stanford died at Honolulu.")
+                globals().update(NEWS_FETCH=_front, NEWS_TEXT_FETCH=_text)
+                NewsFrontPages.GAP_S = NewsFrontPages.TEXT_GAP_S = 0
+                nf_, st_f = NewsFrontPages(), {}
+                rows_f = list(nf_.rows("news 1905-03-04", "news#1905-03-04", st_f))
+                by_f = {f_[0]: f_[2] for r_ in rows_f for f_ in nf_.facts("news 1905-03-04", r_, st_f)}
+                globals().update(NEWS_TEXT_FETCH=text_was)
+                NewsFrontPages.TEXT_GAP_S = tgap_was
                 by_n = {f_[0]: f_[2] for f_ in facts_n}
             finally:
                 globals()["NEWS_FETCH"] = news_was
                 NewsNames.GAP_S = ngap_was
+            ok("1.54: whole front pages — the front page of every issue is read in full, its text fetched by an address made from the "
+               "address of its image (no second look-up); a page with no such text is left to the head pass; names the head never "
+               "reached are recorded the same way; it runs beside the hot list",
+               asked_n[-1] == ("1905-03-04", 1, True) and asked_t == ["/service/ndnp/msar/batch_x/data/sn85034374/002/1905030401/0035.xml"]
+               and len(rows_f) == 1 and {"Harvey Jordan", "LeRoy Percy", "Jane L. Stanford"} <= set(by_f) and "Capt. Heath" in by_f
+               and "died" in by_f["Jane L. Stanford"] and "in court or a legal matter" in by_f["LeRoy Percy"]
+               and qbnews.text_address("https://x/iiif/public:gdc:1:0001/full/") == "" and not hot_first("hot-news-front")
+               and catalog()["hot-news-front"].source == "chronicling-america-pre1931", (asked_n[-1], asked_t, by_f))
             ok("1.50: the news lattice — every day of the archive across all the years in turn; a page's names are recorded as printed "
                "with the day, the paper and its town, the page, the reason, and the paper's own words: Harvey Jordan spoke, Alonzo White "
                "was “arrested or tried, as reported” (a report, never a finding), Theodore Roosevelt was elected or appointed; a bound "

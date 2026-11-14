@@ -307,6 +307,60 @@ class DidYouMeanTest(AskTest):
         self.assertNotIn("did_you_mean", r)
 
 
+class MentionMatchTest(unittest.TestCase):
+    """is a newspaper's name this person? weighed against the person's own facts, never decided by the name alone"""
+    TR = [{"subject": "Theodore Roosevelt (Q33866)", "predicate": "date of birth", "object": "1858-10-27"},
+          {"subject": "Theodore Roosevelt (Q33866)", "predicate": "date of death", "object": "1919-01-06"},
+          {"subject": "Theodore Roosevelt (Q33866)", "predicate": "occupation", "object": "politician"},
+          {"subject": "Theodore Roosevelt (Q33866)", "predicate": "position held", "object": "President of the United States (Q11696)", "start": "1901-09-14", "end": "1909-03-04"},
+          {"subject": "Theodore Roosevelt (Q33866)", "predicate": "place of birth", "object": "New York City (Q60)"},
+          {"subject": "Theodore Roosevelt (Q33866)", "predicate": "place of death", "object": "Oyster Bay, New York"}]
+
+    @staticmethod
+    def m(date, paper, reason, words):
+        return "%s — %s, p. 1 — %s — “%s”" % (date, paper, reason, words)
+
+    def test_the_parts_of_a_mention(self):
+        p = sense.mention_parts(self.m("1905-03-04", "The Greenville times (Greenville, Miss.)", "spoke", "Pres Harvey Jordan will speak"))
+        self.assertEqual((p["year"], p["town"], p["state"], p["reason"], p["page"]), (1905, "Greenville", "Mississippi", "spoke", 1))
+        self.assertEqual(sense.mention_parts("born 1858"), {})
+
+    def test_likely_when_the_time_and_something_more_agree(self):
+        v = sense.match_mention(self.m("1905-03-04", "Evening star (Washington, D.C.)", "elected or appointed", "President Theodore Roosevelt took the oath"), self.TR)
+        self.assertEqual(v["verdict"], "likely")
+        self.assertTrue(any("president" in w for w in v["why"]))
+        died = sense.match_mention(self.m("1919-01-07", "New-York tribune (New York [N.Y.])", "died", "Theodore Roosevelt died at Oyster Bay"), self.TR)
+        self.assertEqual(died["verdict"], "likely")
+        self.assertTrue(any("reports a death" in w for w in died["why"]))
+
+    def test_impossible_before_the_birth_and_in_childhood(self):
+        self.assertEqual(sense.match_mention(self.m("1840-05-01", "The Sun (New York [N.Y.])", "in business", "Theodore Roosevelt merchant"), self.TR)["verdict"], "impossible")
+        self.assertEqual(sense.match_mention(self.m("1866-05-01", "The Sun (New York [N.Y.])", "in business", "Theodore Roosevelt merchant"), self.TR)["verdict"], "impossible")
+
+    def test_only_possible_when_nothing_more_agrees_or_after_the_death(self):
+        plain = sense.match_mention(self.m("1895-06-01", "The Topeka state journal (Topeka, Kan.)", "mentioned", "Theodore Roosevelt was named"), self.TR)
+        self.assertEqual(plain["verdict"], "possible")
+        later = sense.match_mention(self.m("1925-06-01", "Evening star (Washington, D.C.)", "spoke", "President Theodore Roosevelt once said"), self.TR)
+        self.assertEqual(later["verdict"], "possible")
+        self.assertIn("after the person's death", later["why"][0])
+        nodates = sense.match_mention(self.m("1905-06-01", "Evening star (Washington, D.C.)", "spoke", "Senator John Smith spoke"),
+                                      [{"predicate": "position held", "object": "United States senator"}])
+        self.assertEqual(nodates["verdict"], "possible")                            # no dates held: an office alone is not enough
+
+    def test_the_zone_reports_the_weighing_and_never_merges(self):
+        ents = [{"subject": "Theodore Roosevelt (Q33866)", "facts": 6, "fame": 200}, {"subject": "Theodore Roosevelt", "facts": 3, "fame": None}]
+        news = [{"subject": "Theodore Roosevelt", "predicate": "in the news", "object": self.m(d, p, r, w)} for d, p, r, w in (
+            ("1905-03-04", "Evening star (Washington, D.C.)", "elected or appointed", "President Theodore Roosevelt took the oath"),
+            ("1840-05-01", "The Sun (New York [N.Y.])", "in business", "Theodore Roosevelt merchant"),
+            ("1895-06-01", "The Topeka state journal (Topeka, Kan.)", "mentioned", "Theodore Roosevelt was named"))]
+        j = sense.answer_for("Who is Theodore Roosevelt?", "Theodore Roosevelt", ents, self.TR + [{"subject": "Theodore Roosevelt (Q33866)", "predicate": "instance of", "object": "human"}] + news)
+        w = j["unresolved"]["weighed"]
+        self.assertEqual((w["likely"], w["possible"], w["impossible"], w["of"]), (1, 1, 1, 3))
+        self.assertIn("1 fit by date and by something more (likely this person)", j["unresolved"]["why"])
+        self.assertIn("kept apart from the record", j["unresolved"]["why"])
+        self.assertFalse(any(str(f.get("predicate")) == "in the news" for f in j["facts"]))
+
+
 class NewsNameTest(unittest.TestCase):
     """a name from the news lattice is said to be a name as printed in newspapers, with when and why — never a known person"""
 

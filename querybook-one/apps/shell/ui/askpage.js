@@ -395,7 +395,9 @@ function akAnswer(r) {
       el("button", { type: "button", class: "btn small", onclick: () => { document.getElementById("askinput").value = r.did_you_mean.name; akAsk(r.question.replace(r.did_you_mean.typed, r.did_you_mean.name)); } }, "Yes"), " ",
       el("button", { type: "button", class: "btn ghost small", onclick: () => akAsk(r.question, { exact: true }) }, "No — search exactly what I typed")) : null,
     (r.identity_state || {}).state === "unresolved" ? el("p", { class: "note" }, "We don't know who this is: " + r.identity_state.why + ".") : null,
-    (r.unresolved || {}).why ? el("p", { class: "small muted" }, r.unresolved.why) : null,
+    (r.unresolved || {}).why ? el("div", { class: "small muted" }, el("p", {}, r.unresolved.why),
+      ((r.unresolved.weighed || {}).examples || []).length ? el("details", {}, el("summary", {}, "How each newspaper mention was weighed"),
+        el("ul", {}, r.unresolved.weighed.examples.map(x => el("li", {}, el("b", {}, x.verdict), " — " + x.date + ", " + x.paper + " (" + x.reason + "): " + x.why.join("; "))))) : null) : null,
     r.missing ? el("p", { class: "note" }, r.missing + (r.learning ? " " + r.learning : "")) : null,
     el("div", { class: "small muted", style: "margin-top:6px" },
       `Topic: ${r.topic} · shown as ${akFormatName(fmt)}${r.register !== "plain" ? " · tone: " + r.register : ""} · asked: ${(r.asked || []).map(nameOf).join(", ") || "nothing"}` +

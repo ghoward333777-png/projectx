@@ -213,6 +213,12 @@ The download is `tools/build_bundle.py` → QueryBook.zip (Python inside, data-f
 - A fact is (name as printed, "in the news", "date — paper (town), p. N — reason — “the paper's own words”"), linked to its
   page, status "reported". A name is NOT a person: never merge it with a Wikidata record by name alone, never say who it is.
   A reason about crime always reads "arrested or tried, as reported". Runs beside the hot list (outside the hot-first gate).
+- Whole front pages (`NewsFrontPages`, `hot-news-front`, 1.54): the front page of every issue read in full — its text address is
+  made from its image address (`qbnews.text_address`), one request a page. Same source, rule and record as the head pass.
+- Is a newspaper name THIS person? `sense.match_mention` / `weigh_mentions`: each mention is weighed against the person's own facts
+  (alive then; an office the paper names; the paper's place; a death or appointment in the right year) → likely / possible /
+  impossible, with reasons. It is an ANALYSIS shown beside the answer: mentions are never merged into a record, and a name
+  alone never makes a match. After a person's death a mention is only "possible".
 
 ### Complete facts — dates, sources, rank (`docs/querybook-rebuild/complete-facts-plan.md`; engine 1.48)
 
